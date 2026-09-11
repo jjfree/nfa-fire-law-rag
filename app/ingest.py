@@ -2,10 +2,19 @@ from dataclasses import asdict
 from pathlib import PurePosixPath
 from urllib.parse import urlparse
 
-from app.attachments import discover_attachment_urls, extract_pdf_text
+from app.attachments import (
+    PdfTooManyPagesError,
+    discover_attachment_urls,
+    extract_pdf_text,
+)
 from app.config import get_settings
 from app.crawler.discovery import DiscoveredLawLink, discover_law_links
-from app.crawler.fetch import CrawlBlockedError, FetchedPage, HttpFetcher
+from app.crawler.fetch import (
+    AttachmentTooLargeError,
+    CrawlBlockedError,
+    FetchedPage,
+    HttpFetcher,
+)
 from app.crawler.nfa_urls import build_print_url, extract_lsid
 from app.parser import append_attachment_text, metadata_json, parse_law_html
 
@@ -92,7 +101,7 @@ def _ingest_attachments(
     urls = discover_attachment_urls(
         attachment_page.text, attachment_page.url, settings.nfa_allowed_host
     )
-    report = {"discovered": len(urls), "parsed": 0, "errors": []}
+    report = {"discovered": len(urls), "parsed": 0, "skipped": [], "errors": []}
     for url in urls:
         try:
             content_type, content = fetcher.fetch_bytes(url)
@@ -102,15 +111,23 @@ def _ingest_attachments(
                 or content.startswith(b"%PDF-")
             )
             if not is_pdf:
-                report["errors"].append(f"unsupported: {url}")
+                reason = "unsupported content (not detected as PDF)"
+                report["skipped"].append({"url": url, "reason": reason})
+                report["errors"].append(f"{reason}: {url}")
                 continue
             text = extract_pdf_text(content, max_pages=settings.max_attachment_pages)
             if len(text) < 20:
-                report["errors"].append(f"no-text: {url}")
+                reason = "PDF has no searchable text"
+                report["skipped"].append({"url": url, "reason": reason})
+                report["errors"].append(f"{reason}: {url}")
                 continue
             label = PurePosixPath(urlparse(url).path).name or url
             append_attachment_text(parsed, text, label)
             report["parsed"] += 1
+        except (AttachmentTooLargeError, PdfTooManyPagesError) as exc:
+            reason = str(exc)
+            report["skipped"].append({"url": url, "reason": reason})
+            report["errors"].append(f"{reason}: {url}")
         except CrawlBlockedError:
             raise
         except Exception as exc:  # noqa: BLE001 - one bad attachment must not stop the law
@@ -177,6 +194,7 @@ def ingest_link(link: DiscoveredLawLink, fetcher: HttpFetcher | None = None) -> 
                     "law_id": law.id,
                     "title": law.title,
                     "version": existing.version_no,
+                    "metadata": parsed.metadata,
                     "retrieved_url": page.url,
                     "fallback_failures": failed_urls,
                 }

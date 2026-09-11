@@ -67,7 +67,7 @@ python -m app.cli crawl --max-laws 3
 python -m app.cli crawl
 ```
 
-完整 crawl 遇到 HTTP 403/429 會立即停止，不會持續重試；若網路政策更嚴格，可在 `.env` 增加 `CRAWL_DELAY_SECONDS`，例如 `5.0`。附件採串流下載，預設受 `MAX_ATTACHMENT_BYTES=25000000`（25 MB）與 `MAX_ATTACHMENT_PAGES=200` 限制；超過大小或頁數的 PDF 會記錄錯誤並略過，不會耗盡本機記憶體。不要用併發方式加速，也不要關閉 TLS 憑證驗證。
+完整 crawl 遇到 HTTP 403/429 會立即停止，不會持續重試；若網路政策更嚴格，可在 `.env` 增加 `CRAWL_DELAY_SECONDS`，例如 `5.0`。附件採串流下載，預設受 `MAX_ATTACHMENT_BYTES=25000000`（25 MB）與 `MAX_ATTACHMENT_PAGES=200` 限制；超過大小、頁數、沒有可搜尋文字或非 PDF 的檔案會記錄在回報的 `metadata.attachments.skipped`（含 URL 與原因），不會耗盡本機記憶體。不要用併發方式加速，也不要關閉 TLS 憑證驗證。
 
 也可經 API：
 

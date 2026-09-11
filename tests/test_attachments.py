@@ -4,6 +4,9 @@ from types import SimpleNamespace
 import pytest
 
 from app.attachments import PdfTooManyPagesError, discover_attachment_urls, extract_pdf_text
+from app.crawler.discovery import DiscoveredLawLink
+from app.crawler.fetch import FetchedPage
+from app.ingest import _ingest_attachments
 from app.parser import ParsedLaw, append_attachment_text
 
 
@@ -43,3 +46,34 @@ def test_extract_pdf_text_rejects_too_many_pages(monkeypatch):
     monkeypatch.setitem(sys.modules, "pypdf", SimpleNamespace(PdfReader=FakeReader))
     with pytest.raises(PdfTooManyPagesError, match="more than 2 pages"):
         extract_pdf_text(b"not-a-real-pdf", max_pages=2)
+
+
+def test_attachment_report_lists_skipped_files(monkeypatch):
+    class FakeFetcher:
+        def fetch_bytes(self, url):
+            return "application/pdf", b"pdf"
+
+    def reject_pdf(content, max_pages):
+        raise PdfTooManyPagesError(f"PDF has more than {max_pages} pages")
+
+    monkeypatch.setattr("app.ingest.extract_pdf_text", reject_pdf)
+    parsed = ParsedLaw(title="消防法", text="第1條 原本文字", metadata={}, content_hash="old", chunks=[])
+    page = FetchedPage(
+        url="https://law.nfa.gov.tw/MOBILE/law.aspx?LSID=FL102597",
+        text='<a href="/downloadFile.ashx?FileId=13720">附件 PDF</a>',
+        content_type="text/html",
+        status_code=200,
+    )
+    link = DiscoveredLawLink(
+        title="消防法",
+        url=page.url,
+        source_key="nfa:lsid:FL102597",
+    )
+    report = _ingest_attachments(parsed, page, link, FakeFetcher())
+    assert report["parsed"] == 0
+    assert report["skipped"] == [
+        {
+            "url": "https://law.nfa.gov.tw/downloadFile.ashx?FileId=13720",
+            "reason": "PDF has more than 200 pages",
+        }
+    ]
