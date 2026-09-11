@@ -1,3 +1,4 @@
+import ssl
 import time
 from dataclasses import dataclass
 
@@ -20,6 +21,9 @@ class HttpFetcher:
         self.client = httpx.Client(
             timeout=self.settings.http_timeout_seconds,
             follow_redirects=True,
+            # Use the OS trust store so managed Windows PCs can validate
+            # enterprise/intercepting CA chains without disabling TLS checks.
+            verify=ssl.create_default_context(),
             headers={
                 "User-Agent": self.settings.user_agent,
                 "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.5",
