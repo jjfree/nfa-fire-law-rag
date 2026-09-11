@@ -1,11 +1,13 @@
 from dataclasses import asdict
+from pathlib import PurePosixPath
 from urllib.parse import urlparse
 
+from app.attachments import discover_attachment_urls, extract_pdf_text
 from app.config import get_settings
 from app.crawler.discovery import DiscoveredLawLink, discover_law_links
-from app.crawler.fetch import FetchedPage, HttpFetcher
+from app.crawler.fetch import CrawlBlockedError, FetchedPage, HttpFetcher
 from app.crawler.nfa_urls import build_print_url, extract_lsid
-from app.parser import metadata_json, parse_law_html
+from app.parser import append_attachment_text, metadata_json, parse_law_html
 
 
 class IngestError(RuntimeError):
@@ -41,7 +43,9 @@ def _fetch_law_page(link: DiscoveredLawLink, fetcher: HttpFetcher) -> tuple[Fetc
             page = fetcher.fetch(url)
             _validate_source(page.url)
             return page, failed
-        except Exception as exc:  # fallback to the next representation of the same law
+        except CrawlBlockedError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - try the next representation
             failed.append(url)
             last_exc = exc
     if last_exc:
@@ -53,6 +57,7 @@ def parse_link_without_db(link: DiscoveredLawLink, fetcher: HttpFetcher) -> dict
     """Fetch and parse one law without DB/embedding; used by the Phase-2 probe."""
     page, failed_urls = _fetch_law_page(link, fetcher)
     parsed = parse_law_html(page.text, link.title)
+    attachment_urls = discover_attachment_urls(page.text, page.url, get_settings().nfa_allowed_host)
     return {
         "title": parsed.title,
         "source_key": link.source_key,
@@ -66,7 +71,51 @@ def parse_link_without_db(link: DiscoveredLawLink, fetcher: HttpFetcher) -> dict
         "metadata": parsed.metadata,
         "content_hash": parsed.content_hash,
         "fallback_failures": failed_urls,
+        "attachment_urls": attachment_urls,
     }
+
+
+def _ingest_attachments(
+    parsed, page: FetchedPage, link: DiscoveredLawLink, fetcher: HttpFetcher
+) -> dict:
+    """Download same-host PDFs linked by the detail page and append searchable text."""
+    settings = get_settings()
+    attachment_page = page
+    if page.url != link.url:
+        try:
+            attachment_page = fetcher.fetch(link.url)
+        except CrawlBlockedError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - record attachment failure and continue
+            return {"discovered": 0, "parsed": 0, "errors": [f"detail-page: {exc}"]}
+
+    urls = discover_attachment_urls(
+        attachment_page.text, attachment_page.url, settings.nfa_allowed_host
+    )
+    report = {"discovered": len(urls), "parsed": 0, "errors": []}
+    for url in urls:
+        try:
+            content_type, content = fetcher.fetch_bytes(url)
+            is_pdf = (
+                "pdf" in content_type.lower()
+                or urlparse(url).path.lower().endswith(".pdf")
+                or content.startswith(b"%PDF-")
+            )
+            if not is_pdf:
+                report["errors"].append(f"unsupported: {url}")
+                continue
+            text = extract_pdf_text(content)
+            if len(text) < 20:
+                report["errors"].append(f"no-text: {url}")
+                continue
+            label = PurePosixPath(urlparse(url).path).name or url
+            append_attachment_text(parsed, text, label)
+            report["parsed"] += 1
+        except CrawlBlockedError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - one bad attachment must not stop the law
+            report["errors"].append(f"{url}: {type(exc).__name__}: {exc}")
+    return report
 
 
 def ingest_link(link: DiscoveredLawLink, fetcher: HttpFetcher | None = None) -> dict:
@@ -77,6 +126,7 @@ def ingest_link(link: DiscoveredLawLink, fetcher: HttpFetcher | None = None) -> 
     from app.db import embedding_to_storage, rebuild_fts, session_scope
     from app.embedding import get_embedder
     from app.models import Law, LawChunk, LawVersion
+
     _validate_source(link.url)
     own_fetcher = fetcher is None
     fetcher = fetcher or HttpFetcher()
@@ -92,6 +142,9 @@ def ingest_link(link: DiscoveredLawLink, fetcher: HttpFetcher | None = None) -> 
         lsid = extract_lsid(link.url)
         if lsid:
             parsed.metadata.setdefault("lsid", lsid)
+
+        attachment_report = _ingest_attachments(parsed, page, link, fetcher)
+        parsed.metadata["attachments"] = attachment_report
 
         embedder = get_embedder()
         vectors = embedder.embed(
@@ -177,7 +230,9 @@ def ingest_link(link: DiscoveredLawLink, fetcher: HttpFetcher | None = None) -> 
             fetcher.close()
 
 
-def _discover_category(category_url: str, fetcher: HttpFetcher) -> tuple[FetchedPage, list[DiscoveredLawLink]]:
+def _discover_category(
+    category_url: str, fetcher: HttpFetcher
+) -> tuple[FetchedPage, list[DiscoveredLawLink]]:
     _validate_source(category_url)
     category = fetcher.fetch(category_url)
     _validate_source(category.url)
@@ -195,8 +250,10 @@ def probe_category(category_url: str | None = None, max_laws: int = 3) -> dict:
         results = []
         for link in selected:
             try:
-                results.append({"link": asdict(link), "parse": parse_link_without_db(link, fetcher)})
-            except Exception as exc:
+                results.append(
+                    {"link": asdict(link), "parse": parse_link_without_db(link, fetcher)}
+                )
+            except Exception as exc:  # noqa: BLE001 - report one-law probe failures
                 results.append({"link": asdict(link), "error": f"{type(exc).__name__}: {exc}"})
         return {
             "category_url": category.url,
@@ -218,14 +275,18 @@ def crawl_category(category_url: str | None = None, max_laws: int | None = None)
         for link in links:
             try:
                 results.append({"link": asdict(link), "result": ingest_link(link, fetcher)})
-            except Exception as exc:  # continue one-law failures; report them explicitly
+            except CrawlBlockedError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - report one-law failures and continue
                 results.append({"link": asdict(link), "error": f"{type(exc).__name__}: {exc}"})
         return {
             "category_url": category.url,
             "discovered_total": len(all_links),
             "selected": len(links),
             "inserted": sum(1 for r in results if r.get("result", {}).get("status") == "inserted"),
-            "unchanged": sum(1 for r in results if r.get("result", {}).get("status") == "unchanged"),
+            "unchanged": sum(
+                1 for r in results if r.get("result", {}).get("status") == "unchanged"
+            ),
             "errors": sum(1 for r in results if "error" in r),
             "results": results,
         }

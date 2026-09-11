@@ -28,21 +28,6 @@ NOISE_TEXT = {
     "列印",
     "所有條文",
 }
-LAW_HINTS = (
-    "法",
-    "條例",
-    "規則",
-    "辦法",
-    "標準",
-    "要點",
-    "注意事項",
-    "須知",
-    "規定",
-    "原則",
-    "基準",
-    "作業",
-    "指引",
-)
 
 
 def _clean_title(text: str) -> str:
@@ -76,10 +61,9 @@ def discover_law_links(html: str, base_url: str) -> list[DiscoveredLawLink]:
         if title in NOISE_TEXT or len(title) < 2:
             continue
 
-        looks_detail = is_probable_law_detail_url(url)
-        looks_law_title = any(hint in title for hint in LAW_HINTS)
-        has_query = bool(parsed.query)
-        if not (looks_detail or (looks_law_title and has_query)):
+        # Category/news/navigation pages often have law-like titles and query
+        # strings. Only detail-shaped endpoints are valid crawl targets.
+        if not is_probable_law_detail_url(url):
             continue
 
         key = canonical_source_key(url)

@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     nfa_category_url: str = "https://law.nfa.gov.tw/MOBILE/category.aspx?typecode=A002"
     nfa_allowed_host: str = "law.nfa.gov.tw"
-    crawl_delay_seconds: float = 1.2
+    crawl_delay_seconds: float = 2.0
     http_timeout_seconds: float = 20.0
     http_max_retries: int = 3
     user_agent: str = "NFA-Fire-Law-RAG/0.1 (+personal research; respectful crawler)"

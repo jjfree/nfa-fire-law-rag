@@ -18,6 +18,7 @@
 - 尊重網站：單執行緒、預設 1.2 秒節流、timeout/retry、固定 User-Agent。
 - 依 `第X條` / `一、二、...` 法規結構切 chunk，不用一般固定 token 粗切。
 - Semantic `SHA-256` 內容指紋：只雜湊穩定法規內容，排除「列印時間／頁尾」等動態 chrome；未變更法規不重做 embedding，變更時保留舊版本。
+- 法規 detail page 的同網域 PDF/下載附件會嘗試抽取文字，作為 `附件：檔名` chunks 一併存入與查詢；掃描型或失敗附件會記錄在 version metadata，不中斷整批 crawl。
 - SQLite default：單一 `data/nfa_fire_law.db` 檔案，不需要 Docker、WSL、資料庫服務或管理員權限。
 - FTS5 lexical retrieval + NumPy cosine vector retrieval，先以 FTS5 篩選候選，再融合 hybrid score。
 - PostgreSQL + `pgvector` + `pg_trgm` 保留為可選 backend，不影響 SQLite 預設流程。
@@ -28,7 +29,7 @@
 
 ## 1. 快速啟動
 
-需求：Python 3.11+。預設不需要 Docker、WSL、PostgreSQL 或管理員權限。
+需求：Python 3.11+。預設不需要 Docker、WSL、PostgreSQL 或管理員權限。Crawler 單執行緒，預設每次 request 間隔 2 秒。
 
 ```bash
 cp .env.example .env
@@ -65,6 +66,8 @@ python -m app.cli crawl --max-laws 3
 ```bash
 python -m app.cli crawl
 ```
+
+完整 crawl 遇到 HTTP 403/429 會立即停止，不會持續重試；若網路政策更嚴格，可在 `.env` 增加 `CRAWL_DELAY_SECONDS`，例如 `5.0`。不要用併發方式加速，也不要關閉 TLS 憑證驗證。
 
 也可經 API：
 

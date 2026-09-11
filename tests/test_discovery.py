@@ -2,7 +2,6 @@ from pathlib import Path
 
 from app.crawler.discovery import discover_law_links
 
-
 BASE_URL = "https://law.nfa.gov.tw/MOBILE/category.aspx?typecode=A002"
 
 
@@ -20,3 +19,13 @@ def test_legacy_lsid_links_are_deduplicated_across_ldate():
     assert len(links) == 2
     assert links[0].source_key == "nfa:lsid:FL005059"
     assert links[1].source_key == "nfa:lsid:FL005066"
+
+
+def test_discovery_excludes_navigation_and_category_pages():
+    html = """
+    <a href="/MOBILE/news.aspx?type=all">最新法規消息</a>
+    <a href="/MOBILE/category.aspx?typecode=A001">法規分類</a>
+    <a href="/MOBILE/law.aspx?LSID=FL102597">消防安全設備標準</a>
+    """
+    links = discover_law_links(html, BASE_URL)
+    assert [link.url for link in links] == ["https://law.nfa.gov.tw/MOBILE/law.aspx?LSID=FL102597"]

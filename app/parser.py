@@ -20,15 +20,13 @@ class ParsedChunk:
 class ParsedLaw:
     title: str
     text: str
-    metadata: dict[str, str]
+    metadata: dict[str, object]
     content_hash: str
     chunks: list[ParsedChunk]
 
 
 CN_NUM = "一二三四五六七八九十百千萬〇○零兩壹貳參肆伍陸柒捌玖拾佰仟"
-ARTICLE_RE = re.compile(
-    rf"^(第\s*[{CN_NUM}\d\-之]+\s*條(?:\s*之\s*[{CN_NUM}\d]+)?)\s*(.*)$"
-)
+ARTICLE_RE = re.compile(rf"^(第\s*[{CN_NUM}\d\-之]+\s*條(?:\s*之\s*[{CN_NUM}\d]+)?)\s*(.*)$")
 CHAPTER_RE = re.compile(rf"^(第\s*[{CN_NUM}\d]+\s*章)\s*(.*)$")
 SECTION_RE = re.compile(rf"^(第\s*[{CN_NUM}\d]+\s*節)\s*(.*)$")
 POINT_RE = re.compile(rf"^([{CN_NUM}]+、)\s*(.*)$")
@@ -256,7 +254,9 @@ def split_legal_text(text: str) -> list[ParsedChunk]:
     return chunks
 
 
-def _semantic_hash(title: str, metadata: dict[str, str], chunks: list[ParsedChunk], text: str) -> str:
+def _semantic_hash(
+    title: str, metadata: dict[str, str], chunks: list[ParsedChunk], text: str
+) -> str:
     stable_meta = {
         key: metadata[key]
         for key in ("published_date", "effective_date", "amended_date", "authority", "law_status")
@@ -264,7 +264,8 @@ def _semantic_hash(title: str, metadata: dict[str, str], chunks: list[ParsedChun
     }
     if chunks:
         legal_body = "\n".join(
-            f"{chunk.heading or ''}\n{chunk.article_label or ''}\n{chunk.content}" for chunk in chunks
+            f"{chunk.heading or ''}\n{chunk.article_label or ''}\n{chunk.content}"
+            for chunk in chunks
         )
     else:
         legal_body = text
@@ -291,5 +292,24 @@ def parse_law_html(html: str, fallback_title: str = "") -> ParsedLaw:
     return ParsedLaw(title, text, metadata, digest, chunks)
 
 
-def metadata_json(metadata: dict[str, str]) -> str:
+def metadata_json(metadata: dict[str, object]) -> str:
     return json.dumps(metadata, ensure_ascii=False, sort_keys=True)
+
+
+def append_attachment_text(parsed: ParsedLaw, text: str, label: str) -> None:
+    """Add extracted attachment text as searchable chunks and update the hash."""
+    text = text.strip()
+    if not text:
+        return
+    chunks = split_legal_text(text)
+    if not chunks:
+        chunks = [ParsedChunk(0, None, None, text)]
+    start = len(parsed.chunks)
+    for offset, chunk in enumerate(chunks):
+        chunk.seq = start + offset
+        chunk.heading = f"附件：{label}"
+        if not chunk.article_label:
+            chunk.article_label = f"附件{offset + 1}"
+    parsed.chunks.extend(chunks)
+    parsed.text = f"{parsed.text}\n\n附件：{label}\n{text}".strip()
+    parsed.content_hash = _semantic_hash(parsed.title, parsed.metadata, parsed.chunks, parsed.text)

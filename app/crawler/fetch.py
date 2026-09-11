@@ -15,6 +15,10 @@ class FetchedPage:
     status_code: int
 
 
+class CrawlBlockedError(RuntimeError):
+    """Raised when the source asks the crawler to stop or slow down."""
+
+
 class HttpFetcher:
     def __init__(self):
         self.settings = get_settings()
@@ -42,11 +46,31 @@ class HttpFetcher:
         self._throttle()
         response = self.client.get(url)
         self._last_fetch = time.monotonic()
+        if response.status_code in (403, 429):
+            retry_after = response.headers.get("retry-after", "")
+            wait_hint = f" Retry-After={retry_after}" if retry_after else ""
+            raise CrawlBlockedError(
+                f"NFA returned HTTP {response.status_code}; stopping crawl to avoid access blocking.{wait_hint}"
+            )
         response.raise_for_status()
         content_type = response.headers.get("content-type", "")
         if response.encoding is None:
             response.encoding = response.charset_encoding or "utf-8"
         return FetchedPage(str(response.url), response.text, content_type, response.status_code)
+
+    def fetch_bytes(self, url: str) -> tuple[str, bytes]:
+        """Fetch a same-host binary attachment while preserving its content type."""
+        self._throttle()
+        response = self.client.get(url)
+        self._last_fetch = time.monotonic()
+        if response.status_code in (403, 429):
+            retry_after = response.headers.get("retry-after", "")
+            wait_hint = f" Retry-After={retry_after}" if retry_after else ""
+            raise CrawlBlockedError(
+                f"NFA returned HTTP {response.status_code}; stopping crawl to avoid access blocking.{wait_hint}"
+            )
+        response.raise_for_status()
+        return response.headers.get("content-type", ""), response.content
 
     def fetch(self, url: str) -> FetchedPage:
         max_attempts = max(1, self.settings.http_max_retries)
