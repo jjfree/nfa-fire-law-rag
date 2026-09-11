@@ -15,7 +15,7 @@
 - A002 分類頁自動探索法規連結，不預先寫死法規清單。
 - Phase 2：以 `LSID` 作為穩定法規 identity，忽略 `LSID/lsid` 大小寫與不同 `ldate`，避免同一法規重複入庫。
 - Phase 2：對有 `LSID` 的法規優先抓 `GNFA/FLAW/PrintFLAWDAT02.aspx` 完整列印版，失敗再 fallback 原始 detail URL。
-- 尊重網站：單執行緒、預設 1.2 秒節流、timeout/retry、固定 User-Agent。
+- 尊重網站：單執行緒、預設 2 秒節流、timeout/retry、固定 User-Agent。
 - 依 `第X條` / `一、二、...` 法規結構切 chunk，不用一般固定 token 粗切。
 - Semantic `SHA-256` 內容指紋：只雜湊穩定法規內容，排除「列印時間／頁尾」等動態 chrome；未變更法規不重做 embedding，變更時保留舊版本。
 - 法規 detail page 的同網域 PDF/下載附件會嘗試抽取文字，作為 `附件：檔名` chunks 一併存入與查詢；掃描型或失敗附件會記錄在 version metadata，不中斷整批 crawl。
@@ -32,10 +32,14 @@
 需求：Python 3.11+。預設不需要 Docker、WSL、PostgreSQL 或管理員權限。Crawler 單執行緒，預設每次 request 間隔 2 秒。
 
 ```bash
-cp .env.example .env
-python -m pip install -e '.[dev]'
-python -m app.cli init-db
+# PowerShell（Windows 10/11）
+Copy-Item .env.example .env
+.venv\Scripts\python.exe -m pip install -e '.[dev]'
+.venv\Scripts\python.exe -m app.cli init-db
 ```
+
+若尚未建立虛擬環境，先執行 `python -m venv .venv`；macOS/Linux 可改用
+`cp .env.example .env` 與 `python -m ...`。
 
 確認 API：
 
@@ -138,12 +142,14 @@ OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 EMBEDDING_DIM=384
 ```
 
-切換 embedding provider 後，請重建/重新 embedding 全部 chunk，避免向量空間混用。SQLite 可刪除資料檔後重新初始化；若使用 Docker/PG，則可用：
+切換 embedding provider 後，請重建/重新 embedding 全部 chunk，避免向量空間混用。
+請先備份現有 SQLite 檔，並使用新的 `DATABASE_URL` 或經審核的 re-embedding
+流程；本專案的例行操作不刪除既有 `data/` 資料。若使用 Docker/PG，則仍屬選配開發路徑：
 
-```bash
-Remove-Item -Recurse -Force data
-python -m app.cli init-db
-python -m app.cli crawl
+```powershell
+$env:DATABASE_URL = "sqlite:///./data/nfa_fire_law_openai.db"
+.venv\Scripts\python.exe -m app.cli init-db
+.venv\Scripts\python.exe -m app.cli crawl --max-laws 3
 ```
 
 ## 5. MCP
@@ -216,11 +222,13 @@ python -m app.cli eval --path eval/phase2_queries.json --top-k 8
 ## 9. 測試
 
 ```bash
+# Windows PowerShell
 python -m venv .venv
-# Windows: .venv\Scripts\activate
+.venv\Scripts\Activate.ps1
+python -m pip install -e '.[dev]'
+python -m pytest -q
+
 # macOS/Linux: source .venv/bin/activate
-pip install -e '.[dev]'
-pytest -q
 ```
 
 測試 fixture 覆蓋：分類連結探索、`LSID`/`ldate` 去重、NFA print URL、真實舊版列印頁格式、章節/條號切分、metadata 擷取、列印時間不影響 semantic hash、hash embedding deterministic，以及 SQLite schema/FTS5/hybrid search。
