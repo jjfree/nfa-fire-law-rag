@@ -1,6 +1,6 @@
 [project]
 name = "nfa-fire-law-rag"
-version = "0.1.0"
+version = "0.2.0"
 description = "Taiwan NFA fire prevention/investigation law crawler + PostgreSQL/pgvector RAG + FastAPI + MCP"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -14,7 +14,6 @@ dependencies = [
   "psycopg[binary]>=3.2,<4",
   "pydantic-settings>=2.5,<3",
   "sqlalchemy>=2.0,<3",
-  "tenacity>=9,<10",
   "typer>=0.12,<1",
   "uvicorn[standard]>=0.30,<1",
 ]

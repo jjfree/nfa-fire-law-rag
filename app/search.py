@@ -1,11 +1,15 @@
+import re
 from dataclasses import dataclass
 
-from sqlalchemy import Float, cast, func, literal, select
+from sqlalchemy import Float, case, cast, func, literal, select
 
 from app.config import get_settings
 from app.db import session_scope
 from app.embedding import get_embedder
 from app.models import Law, LawChunk, LawVersion
+
+
+ARTICLE_HINT_RE = re.compile(r"(第\s*[一二三四五六七八九十百千萬〇○零兩\d\-之]+\s*條(?:\s*之\s*[一二三四五六七八九十百千\d]+)?)")
 
 
 @dataclass
@@ -15,11 +19,17 @@ class SearchHit:
     law_title: str
     version_no: int
     article_label: str | None
+    heading: str | None
     content: str
     source_url: str
     vector_score: float
     lexical_score: float
     hybrid_score: float
+
+
+def _article_hint(query: str) -> str | None:
+    match = ARTICLE_HINT_RE.search(query)
+    return re.sub(r"\s+", "", match.group(1)) if match else None
 
 
 def hybrid_search(query: str, top_k: int | None = None, law_title: str | None = None) -> list[SearchHit]:
@@ -29,11 +39,29 @@ def hybrid_search(query: str, top_k: int | None = None, law_title: str | None = 
     vector_weight = settings.hybrid_vector_weight
     lexical_weight = 1.0 - vector_weight
 
-    # cosine_distance returns 0 for identical direction and up to ~2; map to [roughly] similarity.
     vector_score = (literal(1.0) - LawChunk.embedding.cosine_distance(query_vector)).label("vector_score")
     content_sim = func.similarity(LawChunk.content, query)
     title_sim = func.similarity(Law.title, query)
-    lexical_score = func.greatest(content_sim, title_sim).label("lexical_score")
+    title_article_sim = func.similarity(
+        func.concat(Law.title, func.coalesce(LawChunk.article_label, "")), query
+    )
+    article_hint = _article_hint(query)
+    if article_hint:
+        article_exact = case(
+            (
+                func.replace(func.coalesce(LawChunk.article_label, ""), " ", "") == article_hint,
+                1.0,
+            ),
+            else_=0.0,
+        )
+        lexical_score = func.greatest(
+            content_sim, title_sim, title_article_sim, article_exact
+        ).label("lexical_score")
+    else:
+        lexical_score = func.greatest(content_sim, title_sim, title_article_sim).label(
+            "lexical_score"
+        )
+
     hybrid_score = (
         cast(vector_score, Float) * vector_weight + cast(lexical_score, Float) * lexical_weight
     ).label("hybrid_score")
@@ -45,6 +73,7 @@ def hybrid_search(query: str, top_k: int | None = None, law_title: str | None = 
             Law.title,
             LawVersion.version_no,
             LawChunk.article_label,
+            LawChunk.heading,
             LawChunk.content,
             Law.source_url,
             vector_score,
@@ -69,6 +98,7 @@ def hybrid_search(query: str, top_k: int | None = None, law_title: str | None = 
                 law_title=r.title,
                 version_no=r.version_no,
                 article_label=r.article_label,
+                heading=r.heading,
                 content=r.content,
                 source_url=r.source_url,
                 vector_score=float(r.vector_score or 0.0),
@@ -100,6 +130,7 @@ def exact_article(law_title: str, article_label: str) -> list[SearchHit]:
                 law_title=law.title,
                 version_no=version.version_no,
                 article_label=chunk.article_label,
+                heading=chunk.heading,
                 content=chunk.content,
                 source_url=law.source_url,
                 vector_score=1.0,

@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from app import __version__
 from app.db import init_db, session_scope
-from app.ingest import crawl_category
+from app.ingest import crawl_category, probe_category
 from app.models import Law, LawVersion
 from app.search import exact_article, hybrid_search
 
@@ -21,6 +21,14 @@ def health():
 def api_init_db():
     init_db()
     return {"status": "ok"}
+
+
+@app.get("/v1/admin/probe")
+def api_probe(max_laws: int = Query(default=3, ge=1, le=50)):
+    try:
+        return probe_category(max_laws=max_laws)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"probe failed: {type(exc).__name__}: {exc}") from exc
 
 
 @app.post("/v1/admin/crawl")

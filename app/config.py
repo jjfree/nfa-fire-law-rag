@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     user_agent: str = "NFA-Fire-Law-RAG/0.1 (+personal research; respectful crawler)"
     category_link_selector: str = ""
     detail_content_selector: str = ""
+    nfa_prefer_print_view: bool = True
 
     database_url: str = "postgresql+psycopg://nfa:nfa@localhost:5432/nfa_law"
 

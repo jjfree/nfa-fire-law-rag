@@ -1,14 +1,10 @@
 from dataclasses import asdict
 from urllib.parse import urlparse
 
-from sqlalchemy import select
-
 from app.config import get_settings
 from app.crawler.discovery import DiscoveredLawLink, discover_law_links
-from app.crawler.fetch import HttpFetcher
-from app.db import session_scope
-from app.embedding import get_embedder
-from app.models import Law, LawChunk, LawVersion
+from app.crawler.fetch import FetchedPage, HttpFetcher
+from app.crawler.nfa_urls import build_print_url, extract_lsid
 from app.parser import metadata_json, parse_law_html
 
 
@@ -23,28 +19,98 @@ def _validate_source(url: str) -> None:
         raise IngestError(f"Refusing source outside allowed host: {host}")
 
 
+def _fetch_law_page(link: DiscoveredLawLink, fetcher: HttpFetcher) -> tuple[FetchedPage, list[str]]:
+    """Fetch a law detail page, preferring NFA's stable print view when possible.
+
+    Returns the page plus a list of failed candidate URLs for observability.
+    """
+    settings = get_settings()
+    print_url = build_print_url(link.url)
+    candidates: list[str] = []
+    if settings.nfa_prefer_print_view and print_url and print_url != link.url:
+        candidates.append(print_url)
+    candidates.append(link.url)
+    if not settings.nfa_prefer_print_view and print_url and print_url != link.url:
+        candidates.append(print_url)
+
+    failed: list[str] = []
+    last_exc: Exception | None = None
+    for url in dict.fromkeys(candidates):
+        _validate_source(url)
+        try:
+            page = fetcher.fetch(url)
+            _validate_source(page.url)
+            return page, failed
+        except Exception as exc:  # fallback to the next representation of the same law
+            failed.append(url)
+            last_exc = exc
+    if last_exc:
+        raise last_exc
+    raise IngestError(f"No fetch candidate for {link.url}")
+
+
+def parse_link_without_db(link: DiscoveredLawLink, fetcher: HttpFetcher) -> dict:
+    """Fetch and parse one law without DB/embedding; used by the Phase-2 probe."""
+    page, failed_urls = _fetch_law_page(link, fetcher)
+    parsed = parse_law_html(page.text, link.title)
+    return {
+        "title": parsed.title,
+        "source_key": link.source_key,
+        "source_url": link.url,
+        "retrieved_url": page.url,
+        "lsid": extract_lsid(link.url),
+        "text_chars": len(parsed.text),
+        "chunks": len(parsed.chunks),
+        "first_article": parsed.chunks[0].article_label if parsed.chunks else None,
+        "last_article": parsed.chunks[-1].article_label if parsed.chunks else None,
+        "metadata": parsed.metadata,
+        "content_hash": parsed.content_hash,
+        "fallback_failures": failed_urls,
+    }
+
+
 def ingest_link(link: DiscoveredLawLink, fetcher: HttpFetcher | None = None) -> dict:
+    # Keep DB/vector dependencies lazy so `nfa-law probe` can run on a fresh
+    # machine before PostgreSQL drivers are installed/configured.
+    from sqlalchemy import select
+
+    from app.db import session_scope
+    from app.embedding import get_embedder
+    from app.models import Law, LawChunk, LawVersion
     _validate_source(link.url)
     own_fetcher = fetcher is None
     fetcher = fetcher or HttpFetcher()
     try:
-        page = fetcher.fetch(link.url)
-        _validate_source(page.url)
+        page, failed_urls = _fetch_law_page(link, fetcher)
         parsed = parse_law_html(page.text, link.title)
         if len(parsed.text) < 20:
             raise IngestError(f"Parsed content too short: {link.url}")
+        if not parsed.chunks:
+            raise IngestError(f"No legal chunks detected: {link.url}")
+
+        parsed.metadata.setdefault("retrieved_url", page.url)
+        lsid = extract_lsid(link.url)
+        if lsid:
+            parsed.metadata.setdefault("lsid", lsid)
+
         embedder = get_embedder()
-        vectors = embedder.embed([f"{parsed.title}\n{c.article_label or ''}\n{c.content}" for c in parsed.chunks])
+        vectors = embedder.embed(
+            [
+                f"{parsed.title}\n{c.heading or ''}\n{c.article_label or ''}\n{c.content}"
+                for c in parsed.chunks
+            ]
+        )
 
         with session_scope() as db:
             law = db.scalar(select(Law).where(Law.source_key == link.source_key))
             if law is None:
-                law = Law(source_key=link.source_key, title=parsed.title, source_url=page.url)
+                law = Law(source_key=link.source_key, title=parsed.title, source_url=link.url)
                 db.add(law)
                 db.flush()
             else:
                 law.title = parsed.title
-                law.source_url = page.url
+                # Preserve the human-facing law URL rather than replacing it with print view.
+                law.source_url = link.url
 
             existing = db.scalar(
                 select(LawVersion).where(
@@ -53,10 +119,24 @@ def ingest_link(link: DiscoveredLawLink, fetcher: HttpFetcher | None = None) -> 
                 )
             )
             if existing:
-                return {"status": "unchanged", "law_id": law.id, "title": law.title, "version": existing.version_no}
+                return {
+                    "status": "unchanged",
+                    "law_id": law.id,
+                    "title": law.title,
+                    "version": existing.version_no,
+                    "retrieved_url": page.url,
+                    "fallback_failures": failed_urls,
+                }
 
-            current_versions = db.scalars(select(LawVersion).where(LawVersion.law_id == law.id, LawVersion.is_current.is_(True))).all()
-            max_version = db.scalars(select(LawVersion.version_no).where(LawVersion.law_id == law.id)).all()
+            current_versions = db.scalars(
+                select(LawVersion).where(
+                    LawVersion.law_id == law.id,
+                    LawVersion.is_current.is_(True),
+                )
+            ).all()
+            max_version = db.scalars(
+                select(LawVersion.version_no).where(LawVersion.law_id == law.id)
+            ).all()
             for old in current_versions:
                 old.is_current = False
 
@@ -88,22 +168,51 @@ def ingest_link(link: DiscoveredLawLink, fetcher: HttpFetcher | None = None) -> 
                 "version": version.version_no,
                 "chunks": len(parsed.chunks),
                 "metadata": parsed.metadata,
+                "retrieved_url": page.url,
+                "fallback_failures": failed_urls,
             }
     finally:
         if own_fetcher:
             fetcher.close()
 
 
+def _discover_category(category_url: str, fetcher: HttpFetcher) -> tuple[FetchedPage, list[DiscoveredLawLink]]:
+    _validate_source(category_url)
+    category = fetcher.fetch(category_url)
+    _validate_source(category.url)
+    links = discover_law_links(category.text, category.url)
+    return category, links
+
+
+def probe_category(category_url: str | None = None, max_laws: int = 3) -> dict:
+    """Network/parser smoke test that does not require PostgreSQL or embeddings."""
+    settings = get_settings()
+    category_url = category_url or settings.nfa_category_url
+    with HttpFetcher() as fetcher:
+        category, all_links = _discover_category(category_url, fetcher)
+        selected = all_links[:max_laws]
+        results = []
+        for link in selected:
+            try:
+                results.append({"link": asdict(link), "parse": parse_link_without_db(link, fetcher)})
+            except Exception as exc:
+                results.append({"link": asdict(link), "error": f"{type(exc).__name__}: {exc}"})
+        return {
+            "category_url": category.url,
+            "discovered_total": len(all_links),
+            "selected": len(selected),
+            "parsed": sum(1 for r in results if "parse" in r),
+            "errors": sum(1 for r in results if "error" in r),
+            "results": results,
+        }
+
+
 def crawl_category(category_url: str | None = None, max_laws: int | None = None) -> dict:
     settings = get_settings()
     category_url = category_url or settings.nfa_category_url
-    _validate_source(category_url)
     with HttpFetcher() as fetcher:
-        category = fetcher.fetch(category_url)
-        _validate_source(category.url)
-        links = discover_law_links(category.text, category.url)
-        if max_laws is not None:
-            links = links[:max_laws]
+        category, all_links = _discover_category(category_url, fetcher)
+        links = all_links[:max_laws] if max_laws is not None else all_links
         results = []
         for link in links:
             try:
@@ -112,7 +221,8 @@ def crawl_category(category_url: str | None = None, max_laws: int | None = None)
                 results.append({"link": asdict(link), "error": f"{type(exc).__name__}: {exc}"})
         return {
             "category_url": category.url,
-            "discovered": len(links),
+            "discovered_total": len(all_links),
+            "selected": len(links),
             "inserted": sum(1 for r in results if r.get("result", {}).get("status") == "inserted"),
             "unchanged": sum(1 for r in results if r.get("result", {}).get("status") == "unchanged"),
             "errors": sum(1 for r in results if "error" in r),
