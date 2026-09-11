@@ -190,6 +190,16 @@ def ingest_link(link: DiscoveredLawLink, fetcher: HttpFetcher | None = None) -> 
                 )
             ):
                 cached_metadata = dict(cached_metadata)
+                cached_attachments = dict(cached_attachments)
+                cached_attachments.setdefault("skipped", [])
+                if not cached_attachments["skipped"]:
+                    for error in cached_attachments.get("errors", []):
+                        marker = error.find("http")
+                        if marker >= 0:
+                            cached_attachments["skipped"].append(
+                                {"url": error[marker:], "reason": error[:marker].rstrip(": ")}
+                            )
+                cached_metadata["attachments"] = cached_attachments
                 parsed.metadata["attachments"] = cached_attachments
                 return {
                     "status": "unchanged",
