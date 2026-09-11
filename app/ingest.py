@@ -1,3 +1,4 @@
+import json
 from dataclasses import asdict
 from pathlib import PurePosixPath
 from urllib.parse import urlparse
@@ -173,11 +174,12 @@ def ingest_link(link: DiscoveredLawLink, fetcher: HttpFetcher | None = None) -> 
                         LawVersion.is_current.is_(True),
                     )
                 )
-            cached_metadata = (
-                cached_current.metadata_json
-                if cached_current is not None and isinstance(cached_current.metadata_json, dict)
-                else None
-            )
+            cached_metadata = None
+            if cached_current is not None and cached_current.metadata_json:
+                try:
+                    cached_metadata = json.loads(cached_current.metadata_json)
+                except (TypeError, json.JSONDecodeError):
+                    cached_metadata = None
             cached_attachments = cached_metadata and cached_metadata.get("attachments")
             if (
                 cached_current is not None
