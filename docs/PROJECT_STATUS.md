@@ -2,8 +2,7 @@
 
 Date: 2026-09-11
 Repository: `C:\Users\james.chang\source\nfa-fire-law-rag`
-Branch: `main` at `origin/main` (`640f51b` before this frontend change); tracked files were clean at the
-baseline, and this task modifies `README.md` plus adds `AGENTS.md` and `docs/` files.
+Branch: `main` at `origin/main`; the tracked baseline is clean before this launcher change.
 
 ## Executive summary
 
@@ -15,9 +14,10 @@ embeddings, NumPy-assisted hybrid search, FastAPI, MCP, a local Streamlit browse
 UI, and offline tests.
 
 The main gap is operational/product completeness rather than a missing core RAG
-engine: the repository has no checked-in `docs/` before this task, no checked-in
-Windows launcher or requirements file, limited update/observability hardening, and
-the answer-generation/citation layer is still outside the current implementation.
+engine: the repository has limited update/observability hardening and no
+requirements file, while the checked-in Windows launcher remains a small local
+developer entrypoint rather than an unattended service. The repository also has
+the answer-generation/citation layer outside the current implementation.
 PostgreSQL/pgvector and Docker artifacts remain as optional residual paths and are
 not required for the Windows SQLite target.
 
@@ -25,7 +25,7 @@ not required for the Windows SQLite target.
 
 | Area | Current evidence | Assessment |
 |---|---|---|
-| Repository | 40 files at `HEAD`; `main` matches `origin/main`; this worktree adds the local UI | Present and maintainable |
+| Repository | 41 tracked files after this change; `main` is synchronized with `origin/main` after push | Present and maintainable |
 | Python package | `app/` with config, models, DB, parser, ingest, search, API, MCP | Substantially implemented |
 | Crawler | `app/crawler/{discovery,fetch,nfa_urls}.py` | Implemented, bounded and host-validated |
 | Ingestion | `app/ingest.py`, attachment handling, version/hash logic | Implemented with focused follow-up needs |
@@ -38,7 +38,7 @@ not required for the Windows SQLite target.
 | Evaluation | `eval/phase2_queries.json`, `app/evaluation.py`, CLI `eval` | Seed evaluation implemented; corpus-dependent |
 | Config | `app/config.py`, `.env.example`; local `.env` ignored | Implemented; secrets kept local |
 | Docs | `README.md`, `AGENTS.md`, and two `docs/` files | README and operational documentation are present |
-| Windows launchers | No tracked `.bat`/`.ps1` in the main repo | Not implemented; do not infer from the separate bootstrap folder |
+| Windows launchers | `scripts/start_streamlit.bat` | Implemented; starts the local UI and opens the browser without crawling or installing |
 | Requirements files | No `requirements*.txt`/`.in`; dependencies in `pyproject.toml` | `pyproject.toml` is the source of truth |
 | Data | Ignored local `data/nfa_fire_law.db` (~98 MB) and `data/test.txt` | Local/generated; not commit candidates |
 
@@ -54,7 +54,7 @@ The repository-wide scan covered the requested source and operational areas:
 | Requested area | Evidence | Result |
 |---|---|---|
 | Python/runtime | `pyproject.toml`, `.env.example`, `app/` | Python package and dependency source of truth are present |
-| `bat`/`ps1` and requirements | repository root and `scripts/` | No tracked launcher or `requirements*.txt`; no launcher is inferred from the separate bootstrap folder |
+| `bat`/`ps1` and requirements | repository root and `scripts/` | One tracked Streamlit launcher; no `requirements*.txt`; dependencies remain in `pyproject.toml` |
 | Database/data | `app/db.py`, `app/models.py`, `scripts/init.sql`, ignored `data/` | SQLite default is implemented; local DB and `test.txt` are generated/untracked data |
 | Crawler/ingestion | `app/crawler/`, `app/ingest.py`, `app/attachments.py` | Bounded discovery/fetch and version-aware ingestion are implemented |
 | Parsing | `app/parser.py`, `tests/fixtures/` | HTML/print normalization and chunk fixtures are present |
@@ -86,6 +86,8 @@ future capability, **可沿用** means keep as the current extension point, and
 - FastAPI health/search/article/law/version/admin endpoints and MCP tools exist.
 - A local Streamlit UI supports natural-language queries, law filtering, result
   counts, current-version evidence, scores, and source links without an API key.
+- `scripts/start_streamlit.bat` checks the repository `.venv`, starts Streamlit on
+  loopback, and opens the local Q&A page automatically.
 - Offline fixtures cover crawler discovery, URL identity, fetch behavior, parsing,
   attachment handling, hashing, embeddings, SQLite/FTS5, and ingestion probing.
 
@@ -113,14 +115,14 @@ future capability, **可沿用** means keep as the current extension point, and
 - Dedicated citation/answer orchestration with mandatory source/version citations.
 - Production authentication, rate governance, monitoring, and deployment guidance.
 - Broader document extraction (for example ODT/DOCX) and a tested reranker.
-- A checked-in Windows `.bat`/`.ps1` developer entrypoint; this can be added later if
-  it remains useful and stays optional.
+- A production service, unattended scheduler, or remote deployment; the checked-in
+  launcher is intentionally limited to local interactive use.
 
 ### Reuse / retire / refactor guidance
 
 | Decision | Items | Guidance |
 |---|---|---|
-| Reuse directly | `app/config.py`, `app/db.py`, `app/models.py`, `app/parser.py`, `app/embedding.py`, `app/search.py`, `app/streamlit_app.py`, tests, fixtures | These form the current SQLite-first core and local UI and should be extended narrowly |
+| Reuse directly | `app/config.py`, `app/db.py`, `app/models.py`, `app/parser.py`, `app/embedding.py`, `app/search.py`, `app/streamlit_app.py`, `scripts/start_streamlit.bat`, tests, fixtures | These form the current SQLite-first core and local UI and should be extended narrowly |
 | Reuse with focused hardening | `app/ingest.py`, `app/crawler/*`, `app/api.py`, `app/mcp_server.py` | Add observability, update controls, and citation contracts incrementally |
 | Retain but keep optional | `Dockerfile`, `docker-compose.yml`, `scripts/init.sql`, PostgreSQL dependencies/branches | Do not delete during this phase; never make them prerequisites |
 | No confirmed retirement | No tracked file has an uncertain enough purpose to delete | Preserve and document instead of guessing |
@@ -174,8 +176,10 @@ check, and a pytest cache permission warning. They did not fail tests.
 - `docs/PROJECT_STATUS.md` — this evidence-backed inventory and completion report.
 - `docs/MIGRATION_PLAN_SQLITE_HYBRID_RAG.md` — Phase 0–10 staged migration plan.
 - `app/streamlit_app.py` — local browser Q&A/evidence interface over existing hybrid retrieval.
+- `scripts/start_streamlit.bat` — Windows launcher that starts Streamlit and opens the local Q&A URL.
 - `.streamlit/config.toml` — disables Streamlit usage statistics for local-only operation.
 - `tests/test_streamlit_app.py` — UI response/provenance tests without requiring Streamlit at import time.
+- `tests/test_start_streamlit_bat.py` — offline checks for launcher paths, loopback binding, and no crawl/install behavior.
 - `pyproject.toml` — adds the optional `ui` dependency extra for Streamlit.
 
 No existing application code, database contents, or optional Docker/PostgreSQL

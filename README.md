@@ -166,6 +166,10 @@ $env:DATABASE_URL = "sqlite:///./data/nfa_fire_law_openai.db"
 .venv\Scripts\python.exe -m streamlit run app/streamlit_app.py --server.address 127.0.0.1 --server.port 8501 --browser.gatherUsageStats false
 ```
 
+也可以直接雙擊 `scripts\start_streamlit.bat`。啟動器會檢查專案 `.venv` 與
+Streamlit 是否可用，啟動本機服務後自動開啟 `http://127.0.0.1:8501`；首次使用前
+仍須先完成上面的 UI 選配依賴安裝。啟動器不會執行爬取或自動安裝套件。
+
 開啟 `http://127.0.0.1:8501` 後，可輸入自然語言問題、選擇法規篩選與結果數。
 介面顯示現行版本的條文內容、條號、版本、檢索分數與原始來源 URL；預設不需要
 OpenAI API key，也不會把檢索不到的內容編造成法律結論。這是本機只讀查詢介面，
