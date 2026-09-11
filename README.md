@@ -152,7 +152,26 @@ $env:DATABASE_URL = "sqlite:///./data/nfa_fire_law_openai.db"
 .venv\Scripts\python.exe -m app.cli crawl --max-laws 3
 ```
 
-## 5. MCP
+## 5. 本機瀏覽器問答介面（Streamlit）
+
+安裝 UI 選配依賴：
+
+```powershell
+.venv\Scripts\python.exe -m pip install -e ".[ui]"
+```
+
+啟動本機瀏覽器介面（只綁定 `127.0.0.1`，不直接暴露到區域網路）：
+
+```powershell
+.venv\Scripts\python.exe -m streamlit run app/streamlit_app.py --server.address 127.0.0.1 --server.port 8501 --browser.gatherUsageStats false
+```
+
+開啟 `http://127.0.0.1:8501` 後，可輸入自然語言問題、選擇法規篩選與結果數。
+介面顯示現行版本的條文內容、條號、版本、檢索分數與原始來源 URL；預設不需要
+OpenAI API key，也不會把檢索不到的內容編造成法律結論。這是本機只讀查詢介面，
+尚未加入登入驗證或遠端部署能力。
+
+## 6. MCP
 
 MCP server 使用 stdio transport：
 
@@ -196,7 +215,7 @@ python -m pip install -e '.[postgres]'
 }
 ```
 
-## 6. 資料模型
+## 7. 資料模型
 
 - `laws`：法規 identity、名稱、來源 URL。
 - `law_versions`：每次內容變更的完整版本、hash、抓取時間、是否現行。
@@ -205,11 +224,11 @@ python -m pip install -e '.[postgres]'
 
 版本策略：同一 `source_key` 若 hash 不變 → `unchanged`；hash 變更 → 舊版 `is_current=false`、新增新版並重新 embedding。
 
-## 7. API 安全提醒
+## 8. API 安全提醒
 
 `/v1/admin/crawl` 在 PoC 沒加認證；若部署到公開網路，應先加 API key / reverse proxy auth，或只允許內網。PostgreSQL 預設帳密 `nfa/nfa` 也只適合本機 PoC。
 
-## 8. Phase 2 retrieval evaluation
+## 9. Phase 2 retrieval evaluation
 
 完整 ingest 後可跑第一批檢索驗證案例：
 
@@ -219,7 +238,7 @@ python -m app.cli eval --path eval/phase2_queries.json --top-k 8
 
 輸出 `law_hit_rate` 與有指定條號案例的 `article_hit_rate`，並列出每題前 5 筆命中。這組案例是 smoke/evaluation seed，後續應依實際消防業務題庫持續擴充。
 
-## 9. 測試
+## 10. 測試
 
 ```bash
 # Windows PowerShell
@@ -233,7 +252,7 @@ python -m pytest -q
 
 測試 fixture 覆蓋：分類連結探索、`LSID`/`ldate` 去重、NFA print URL、真實舊版列印頁格式、章節/條號切分、metadata 擷取、列印時間不影響 semantic hash、hash embedding deterministic，以及 SQLite schema/FTS5/hybrid search。
 
-## 10. 下一版建議
+## 11. 下一版建議
 
 1. 在可直接連線 `law.nfa.gov.tw` 的環境執行 live probe，保存真正 A002 HTML fixture，再把 selector regression test 鎖定。
 2. 支援 PDF/ODT/DOCX 附件抽取與附件法規關聯。

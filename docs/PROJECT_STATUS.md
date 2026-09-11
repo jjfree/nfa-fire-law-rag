@@ -2,7 +2,7 @@
 
 Date: 2026-09-11
 Repository: `C:\Users\james.chang\source\nfa-fire-law-rag`
-Branch: `main` at `origin/main` (`2c384eb`); tracked files were clean at the
+Branch: `main` at `origin/main` (`640f51b` before this frontend change); tracked files were clean at the
 baseline, and this task modifies `README.md` plus adds `AGENTS.md` and `docs/` files.
 
 ## Executive summary
@@ -11,7 +11,8 @@ The repository is a working Phase 2 proof of concept, not an empty scaffold. The
 SQLite-first path already covers discovery, bounded HTTP fetching, NFA URL identity,
 HTML parsing, article/point chunking, attachment text extraction, version-aware
 ingestion, SQLite schema creation, FTS5 indexing, deterministic or OpenAI
-embeddings, NumPy-assisted hybrid search, FastAPI, MCP, and offline tests.
+embeddings, NumPy-assisted hybrid search, FastAPI, MCP, a local Streamlit browser
+UI, and offline tests.
 
 The main gap is operational/product completeness rather than a missing core RAG
 engine: the repository has no checked-in `docs/` before this task, no checked-in
@@ -24,7 +25,7 @@ not required for the Windows SQLite target.
 
 | Area | Current evidence | Assessment |
 |---|---|---|
-| Repository | 37 files at `HEAD`; `main` matches `origin/main`; only this task's docs are untracked | Present and maintainable |
+| Repository | 40 files at `HEAD`; `main` matches `origin/main`; this worktree adds the local UI | Present and maintainable |
 | Python package | `app/` with config, models, DB, parser, ingest, search, API, MCP | Substantially implemented |
 | Crawler | `app/crawler/{discovery,fetch,nfa_urls}.py` | Implemented, bounded and host-validated |
 | Ingestion | `app/ingest.py`, attachment handling, version/hash logic | Implemented with focused follow-up needs |
@@ -32,10 +33,11 @@ not required for the Windows SQLite target.
 | Embedding | `app/embedding.py` | Implemented deterministic hash and optional OpenAI providers |
 | Database | `app/db.py`, `app/models.py`, `scripts/init.sql` | SQLite default implemented; PostgreSQL optional |
 | API/MCP | `app/api.py`, `app/mcp_server.py` | Implemented PoC interfaces |
-| Tests | 8 test modules plus fixtures | 24 tests passing |
+| Browser UI | `app/streamlit_app.py`, `.streamlit/config.toml`, `pyproject.toml` `ui` extra | Local read-only Streamlit Q&A/evidence interface implemented |
+| Tests | 9 test modules plus fixtures | 26 tests passing |
 | Evaluation | `eval/phase2_queries.json`, `app/evaluation.py`, CLI `eval` | Seed evaluation implemented; corpus-dependent |
 | Config | `app/config.py`, `.env.example`; local `.env` ignored | Implemented; secrets kept local |
-| Docs | `README.md`; `AGENTS.md` and two `docs/` files are new in this worktree | README useful; operational docs now added |
+| Docs | `README.md`, `AGENTS.md`, and two `docs/` files | README and operational documentation are present |
 | Windows launchers | No tracked `.bat`/`.ps1` in the main repo | Not implemented; do not infer from the separate bootstrap folder |
 | Requirements files | No `requirements*.txt`/`.in`; dependencies in `pyproject.toml` | `pyproject.toml` is the source of truth |
 | Data | Ignored local `data/nfa_fire_law.db` (~98 MB) and `data/test.txt` | Local/generated; not commit candidates |
@@ -82,6 +84,8 @@ future capability, **可沿用** means keep as the current extension point, and
 - SQLite retrieval fuses FTS5 candidate retrieval, text overlap, and NumPy cosine
   similarity; exact article lookup is also present.
 - FastAPI health/search/article/law/version/admin endpoints and MCP tools exist.
+- A local Streamlit UI supports natural-language queries, law filtering, result
+  counts, current-version evidence, scores, and source links without an API key.
 - Offline fixtures cover crawler discovery, URL identity, fetch behavior, parsing,
   attachment handling, hashing, embeddings, SQLite/FTS5, and ingestion probing.
 
@@ -90,8 +94,9 @@ future capability, **可沿用** means keep as the current extension point, and
 - Incremental sync exists at the law/version/hash level, but scheduling, durable
   crawl manifests, resumability, and richer update reporting are not yet a full
   operational workflow.
-- Metadata and provenance are stored, but a dedicated answer-generation layer that
-  enforces citation formatting is not implemented.
+- Metadata and provenance are stored, and the local UI displays retrieval evidence;
+  a dedicated generative answer layer that enforces citation formatting is not
+  implemented.
 - OpenAI embeddings are supported, but provider/model/dimension compatibility is a
   configuration responsibility and there is no migration command for re-embedding.
 - Retrieval has a PostgreSQL branch, but the supported/default acceptance target is
@@ -115,7 +120,7 @@ future capability, **可沿用** means keep as the current extension point, and
 
 | Decision | Items | Guidance |
 |---|---|---|
-| Reuse directly | `app/config.py`, `app/db.py`, `app/models.py`, `app/parser.py`, `app/embedding.py`, `app/search.py`, tests, fixtures | These form the current SQLite-first core and should be extended narrowly |
+| Reuse directly | `app/config.py`, `app/db.py`, `app/models.py`, `app/parser.py`, `app/embedding.py`, `app/search.py`, `app/streamlit_app.py`, tests, fixtures | These form the current SQLite-first core and local UI and should be extended narrowly |
 | Reuse with focused hardening | `app/ingest.py`, `app/crawler/*`, `app/api.py`, `app/mcp_server.py` | Add observability, update controls, and citation contracts incrementally |
 | Retain but keep optional | `Dockerfile`, `docker-compose.yml`, `scripts/init.sql`, PostgreSQL dependencies/branches | Do not delete during this phase; never make them prerequisites |
 | No confirmed retirement | No tracked file has an uncertain enough purpose to delete | Preserve and document instead of guessing |
@@ -154,7 +159,8 @@ no live crawl was run.
 | SQLite runtime | 3.49.1; `SELECT sqlite_version()` returned 3.49.1 |
 | temporary FTS5 table/query | Passed; one inserted Chinese legal row was found |
 | NumPy | 2.5.3; float32 array and norm calculation passed |
-| repository tests | `24 passed, 4 warnings in 0.66s` |
+| Streamlit UI dependency | `1.63.0` installed in repository `.venv` |
+| repository tests | `26 passed, 4 warnings` |
 
 The warnings were existing dependency/runtime warnings: `datetime.utcnow()` deprecation
 from SQLAlchemy-related defaults, the deprecated `sqlite3.version` read used for this
@@ -167,16 +173,21 @@ check, and a pytest cache permission warning. They did not fail tests.
   non-destructive setup/re-embedding guidance primary.
 - `docs/PROJECT_STATUS.md` — this evidence-backed inventory and completion report.
 - `docs/MIGRATION_PLAN_SQLITE_HYBRID_RAG.md` — Phase 0–10 staged migration plan.
+- `app/streamlit_app.py` — local browser Q&A/evidence interface over existing hybrid retrieval.
+- `.streamlit/config.toml` — disables Streamlit usage statistics for local-only operation.
+- `tests/test_streamlit_app.py` — UI response/provenance tests without requiring Streamlit at import time.
+- `pyproject.toml` — adds the optional `ui` dependency extra for Streamlit.
 
-No application code, database contents, existing tracked files, or optional Docker/
-PostgreSQL artifacts were deleted or rewritten.
+No existing application code, database contents, or optional Docker/PostgreSQL
+artifacts were deleted; the new UI module and its test were added separately.
 
 ## Recommended next phase
 
-Start with **Phase 1: Windows runtime and repeatable local commands** in the active
-repository. The first focused changes should be limited
-to a Windows-safe developer entrypoint and a read-only diagnostics command, for
-example:
+The browser UI is now the recommended local interaction path. The next focused
+implementation remains **Phase 1: Windows runtime and repeatable local commands**,
+especially a read-only diagnostics command, followed by the dedicated answer and
+citation orchestration planned in Phase 8. Keep the UI local-only until authentication
+and deployment controls are reviewed. Likely files include:
 
 - `pyproject.toml` (only if a CLI entrypoint or dependency metadata needs a small
   adjustment);

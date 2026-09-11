@@ -21,6 +21,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<9", "pytest-cov>=5,<7", "ruff>=0.8,<1"]
+ui = ["streamlit>=1.40,<2"]
 postgres = ["pgvector>=0.3,<1", "psycopg[binary]>=3.2,<4"]
 
 [project.scripts]
