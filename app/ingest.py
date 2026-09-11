@@ -74,7 +74,7 @@ def ingest_link(link: DiscoveredLawLink, fetcher: HttpFetcher | None = None) -> 
     # machine before PostgreSQL drivers are installed/configured.
     from sqlalchemy import select
 
-    from app.db import session_scope
+    from app.db import embedding_to_storage, rebuild_fts, session_scope
     from app.embedding import get_embedder
     from app.models import Law, LawChunk, LawVersion
     _validate_source(link.url)
@@ -158,9 +158,10 @@ def ingest_link(link: DiscoveredLawLink, fetcher: HttpFetcher | None = None) -> 
                         article_label=chunk.article_label,
                         heading=chunk.heading,
                         content=chunk.content,
-                        embedding=vector,
+                        embedding=embedding_to_storage(vector),
                     )
                 )
+            rebuild_fts(db)
             return {
                 "status": "inserted",
                 "law_id": law.id,

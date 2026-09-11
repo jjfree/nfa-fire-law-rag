@@ -19,6 +19,9 @@ services:
   api:
     build: .
     env_file: .env
+    environment:
+      STORAGE_BACKEND: postgres
+      DATABASE_URL: postgresql+psycopg://nfa:nfa@db:5432/nfa_law
     ports:
       - "8000:8000"
     depends_on:

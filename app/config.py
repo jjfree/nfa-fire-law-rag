@@ -17,7 +17,11 @@ class Settings(BaseSettings):
     detail_content_selector: str = ""
     nfa_prefer_print_view: bool = True
 
-    database_url: str = "postgresql+psycopg://nfa:nfa@localhost:5432/nfa_law"
+    # SQLite is the zero-setup default. Use STORAGE_BACKEND=postgres for the
+    # optional PostgreSQL/pgvector deployment.
+    storage_backend: str = "sqlite"
+    database_url: str = "sqlite:///./data/nfa_fire_law.db"
+    sqlite_fts_candidate_limit: int = Field(default=300, ge=20, le=5000)
 
     embedding_provider: str = "hash"
     embedding_dim: int = 384

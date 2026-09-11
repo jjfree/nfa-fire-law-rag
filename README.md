@@ -2,7 +2,7 @@
 
 可執行的「內政部消防署消防預防調查法令」知識庫（目前 Phase 2 / v0.2）：
 
-`crawler → 法規條文解析 → PostgreSQL/pgvector → Hybrid Search → FastAPI → MCP`
+`crawler → 法規條文解析 → SQLite + FTS5 + NumPy → Hybrid Search → FastAPI → MCP`
 
 預設來源：
 
@@ -18,8 +18,9 @@
 - 尊重網站：單執行緒、預設 1.2 秒節流、timeout/retry、固定 User-Agent。
 - 依 `第X條` / `一、二、...` 法規結構切 chunk，不用一般固定 token 粗切。
 - Semantic `SHA-256` 內容指紋：只雜湊穩定法規內容，排除「列印時間／頁尾」等動態 chrome；未變更法規不重做 embedding，變更時保留舊版本。
-- PostgreSQL + `pgvector` + `pg_trgm`。
-- Hybrid Retrieval：cosine vector score + 中文 trigram lexical score。
+- SQLite default：單一 `data/nfa_fire_law.db` 檔案，不需要 Docker、WSL、資料庫服務或管理員權限。
+- FTS5 lexical retrieval + NumPy cosine vector retrieval，先以 FTS5 篩選候選，再融合 hybrid score。
+- PostgreSQL + `pgvector` + `pg_trgm` 保留為可選 backend，不影響 SQLite 預設流程。
 - 無 API key 也能跑：預設 deterministic character n-gram hash embedding (384 維)。
 - 可切換 OpenAI `text-embedding-3-small` 並要求 384 維，資料表不用修改。
 - FastAPI 查詢 API。
@@ -27,11 +28,12 @@
 
 ## 1. 快速啟動
 
-需求：Docker Desktop / Docker Compose。
+需求：Python 3.11+。預設不需要 Docker、WSL、PostgreSQL 或管理員權限。
 
 ```bash
 cp .env.example .env
-docker compose up -d --build
+python -m pip install -e '.[dev]'
+python -m app.cli init-db
 ```
 
 確認 API：
@@ -44,7 +46,7 @@ Swagger：`http://localhost:8000/docs`
 
 ## 2. Phase 2 live probe 與第一次爬取
 
-先做 **不需要 PostgreSQL** 的真實站台 probe：
+先做不需要資料庫的真實站台 probe：
 
 ```bash
 python -m app.cli probe --max-laws 3
@@ -55,13 +57,13 @@ probe 會回報 `LSID / retrieved_url / chunks / first_article / last_article / 
 確認 probe 正常後，再小量 ingest：
 
 ```bash
-docker compose exec api python -m app.cli crawl --max-laws 3
+python -m app.cli crawl --max-laws 3
 ```
 
 確認結果正常後完整執行：
 
 ```bash
-docker compose exec api python -m app.cli crawl
+python -m app.cli crawl
 ```
 
 也可經 API：
@@ -133,12 +135,12 @@ OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 EMBEDDING_DIM=384
 ```
 
-切換 embedding provider 後，請重建/重新 embedding 全部 chunk，避免向量空間混用。PoC 最簡單做法：
+切換 embedding provider 後，請重建/重新 embedding 全部 chunk，避免向量空間混用。SQLite 可刪除資料檔後重新初始化；若使用 Docker/PG，則可用：
 
 ```bash
-docker compose down -v
-docker compose up -d --build
-docker compose exec api python -m app.cli crawl
+Remove-Item -Recurse -Force data
+python -m app.cli init-db
+python -m app.cli crawl
 ```
 
 ## 5. MCP
@@ -156,11 +158,20 @@ python -m app.mcp_server
 - `list_fire_laws()`
 - `list_law_versions(law_id)`
 
-若 MCP client 在主機執行，而 PostgreSQL 在 Docker，請將 `.env` 的 DB host 改成 `localhost`：
+SQLite 預設直接使用專案內的資料檔。若選擇 PostgreSQL，請安裝選配依賴並將 `.env` 改為：
 
 ```dotenv
+STORAGE_BACKEND=postgres
 DATABASE_URL=postgresql+psycopg://nfa:nfa@localhost:5432/nfa_law
 ```
+
+接著安裝 PostgreSQL backend：
+
+```bash
+python -m pip install -e '.[postgres]'
+```
+
+`docker-compose.yml` 仍可作為 PostgreSQL/pgvector 的選配開發環境，但不是新 PC 的必要依賴。
 
 一個通用 MCP client 設定概念：
 
@@ -180,7 +191,8 @@ DATABASE_URL=postgresql+psycopg://nfa:nfa@localhost:5432/nfa_law
 
 - `laws`：法規 identity、名稱、來源 URL。
 - `law_versions`：每次內容變更的完整版本、hash、抓取時間、是否現行。
-- `law_chunks`：以條文/行政規則點次切分，保存 vector。
+- `law_chunks`：以條文/行政規則點次切分，SQLite 保存 float32 embedding BLOB；PostgreSQL 保存 pgvector。
+- `law_chunks_fts`：SQLite FTS5 現行版本索引，另以 CJK character n-grams 提升中文查詢命中。
 
 版本策略：同一 `source_key` 若 hash 不變 → `unchanged`；hash 變更 → 舊版 `is_current=false`、新增新版並重新 embedding。
 
@@ -208,7 +220,7 @@ pip install -e '.[dev]'
 pytest -q
 ```
 
-測試 fixture 覆蓋：分類連結探索、`LSID`/`ldate` 去重、NFA print URL、真實舊版列印頁格式、章節/條號切分、metadata 擷取、列印時間不影響 semantic hash、hash embedding deterministic。
+測試 fixture 覆蓋：分類連結探索、`LSID`/`ldate` 去重、NFA print URL、真實舊版列印頁格式、章節/條號切分、metadata 擷取、列印時間不影響 semantic hash、hash embedding deterministic，以及 SQLite schema/FTS5/hybrid search。
 
 ## 10. 下一版建議
 

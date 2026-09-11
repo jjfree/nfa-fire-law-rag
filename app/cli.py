@@ -10,11 +10,21 @@ app = typer.Typer(help="NFA Fire Law RAG management CLI")
 
 @app.command("init-db")
 def init_db_command():
-    """Create PostgreSQL extensions and tables."""
+    """Create the configured storage schema and SQLite FTS5 index."""
     from app.db import init_db
 
     init_db()
     typer.echo("Database initialized.")
+
+
+@app.command("rebuild-fts")
+def rebuild_fts_command():
+    """Rebuild the SQLite FTS5 index from current law versions."""
+    from app.db import rebuild_fts, session_scope
+
+    with session_scope() as db:
+        rebuild_fts(db)
+    typer.echo("FTS index rebuilt (or skipped for PostgreSQL).")
 
 
 @app.command("probe")
