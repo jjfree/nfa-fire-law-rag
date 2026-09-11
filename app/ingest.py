@@ -160,6 +160,45 @@ def ingest_link(link: DiscoveredLawLink, fetcher: HttpFetcher | None = None) -> 
         if lsid:
             parsed.metadata.setdefault("lsid", lsid)
 
+        # Avoid re-downloading and re-parsing unchanged attachments on a
+        # resumed crawl. The stored raw text starts with the current detail
+        # page text when the law body is unchanged.
+        with session_scope() as db:
+            cached_law = db.scalar(select(Law).where(Law.source_key == link.source_key))
+            cached_current = None
+            if cached_law is not None:
+                cached_current = db.scalar(
+                    select(LawVersion).where(
+                        LawVersion.law_id == cached_law.id,
+                        LawVersion.is_current.is_(True),
+                    )
+                )
+            cached_metadata = (
+                cached_current.metadata_json
+                if cached_current is not None and isinstance(cached_current.metadata_json, dict)
+                else None
+            )
+            cached_attachments = cached_metadata and cached_metadata.get("attachments")
+            if (
+                cached_current is not None
+                and cached_attachments is not None
+                and (
+                    cached_current.raw_text == parsed.text
+                    or cached_current.raw_text.startswith(parsed.text + "\n\n附件：")
+                )
+            ):
+                cached_metadata = dict(cached_metadata)
+                parsed.metadata["attachments"] = cached_attachments
+                return {
+                    "status": "unchanged",
+                    "law_id": cached_law.id,
+                    "title": cached_law.title,
+                    "version": cached_current.version_no,
+                    "metadata": cached_metadata,
+                    "retrieved_url": page.url,
+                    "fallback_failures": failed_urls,
+                }
+
         attachment_report = _ingest_attachments(parsed, page, link, fetcher)
         parsed.metadata["attachments"] = attachment_report
 
