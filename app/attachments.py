@@ -7,6 +7,10 @@ from bs4 import BeautifulSoup
 ATTACHMENT_HINTS = (".pdf", "download", "attachment", "attach", "file")
 
 
+class PdfTooManyPagesError(RuntimeError):
+    """Raised when a PDF exceeds the configured extraction page limit."""
+
+
 def discover_attachment_urls(html: str, base_url: str, allowed_host: str) -> list[str]:
     """Find same-host PDF/download links without treating navigation as attachments."""
     soup = BeautifulSoup(html, "html.parser")
@@ -31,10 +35,12 @@ def discover_attachment_urls(html: str, base_url: str, allowed_host: str) -> lis
     return result
 
 
-def extract_pdf_text(content: bytes) -> str:
+def extract_pdf_text(content: bytes, max_pages: int = 200) -> str:
     """Extract text from a text-based PDF; scanned PDFs return an empty string."""
     from pypdf import PdfReader
 
     reader = PdfReader(BytesIO(content))
+    if len(reader.pages) > max_pages:
+        raise PdfTooManyPagesError(f"PDF has more than {max_pages} pages")
     pages = [page.extract_text() or "" for page in reader.pages]
     return re.sub(r"\n{3,}", "\n\n", "\n".join(pages)).strip()

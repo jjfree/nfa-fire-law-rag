@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     http_timeout_seconds: float = 20.0
     http_max_retries: int = 3
     max_attachment_bytes: int = Field(default=25_000_000, ge=1_000_000, le=200_000_000)
+    max_attachment_pages: int = Field(default=200, ge=1, le=5000)
     user_agent: str = "NFA-Fire-Law-RAG/0.1 (+personal research; respectful crawler)"
     category_link_selector: str = ""
     detail_content_selector: str = ""

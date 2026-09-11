@@ -1,4 +1,9 @@
-from app.attachments import discover_attachment_urls
+import sys
+from types import SimpleNamespace
+
+import pytest
+
+from app.attachments import PdfTooManyPagesError, discover_attachment_urls, extract_pdf_text
 from app.parser import ParsedLaw, append_attachment_text
 
 
@@ -28,3 +33,13 @@ def test_append_attachment_text_creates_searchable_chunks_and_updates_hash():
     assert parsed.chunks[0].heading == "附件：evidence.pdf"
     assert "附件內容" in parsed.text
     assert parsed.content_hash != "old"
+
+
+def test_extract_pdf_text_rejects_too_many_pages(monkeypatch):
+    class FakeReader:
+        def __init__(self, stream):
+            self.pages = [object(), object(), object()]
+
+    monkeypatch.setitem(sys.modules, "pypdf", SimpleNamespace(PdfReader=FakeReader))
+    with pytest.raises(PdfTooManyPagesError, match="more than 2 pages"):
+        extract_pdf_text(b"not-a-real-pdf", max_pages=2)

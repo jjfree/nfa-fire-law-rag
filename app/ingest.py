@@ -104,7 +104,7 @@ def _ingest_attachments(
             if not is_pdf:
                 report["errors"].append(f"unsupported: {url}")
                 continue
-            text = extract_pdf_text(content)
+            text = extract_pdf_text(content, max_pages=settings.max_attachment_pages)
             if len(text) < 20:
                 report["errors"].append(f"no-text: {url}")
                 continue
