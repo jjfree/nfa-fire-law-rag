@@ -19,6 +19,10 @@ class CrawlBlockedError(RuntimeError):
     """Raised when the source asks the crawler to stop or slow down."""
 
 
+class AttachmentTooLargeError(RuntimeError):
+    """Raised when an attachment exceeds the configured safety limit."""
+
+
 class HttpFetcher:
     def __init__(self):
         self.settings = get_settings()
@@ -61,16 +65,28 @@ class HttpFetcher:
     def fetch_bytes(self, url: str) -> tuple[str, bytes]:
         """Fetch a same-host binary attachment while preserving its content type."""
         self._throttle()
-        response = self.client.get(url)
-        self._last_fetch = time.monotonic()
-        if response.status_code in (403, 429):
-            retry_after = response.headers.get("retry-after", "")
-            wait_hint = f" Retry-After={retry_after}" if retry_after else ""
-            raise CrawlBlockedError(
-                f"NFA returned HTTP {response.status_code}; stopping crawl to avoid access blocking.{wait_hint}"
-            )
-        response.raise_for_status()
-        return response.headers.get("content-type", ""), response.content
+        with self.client.stream("GET", url) as response:
+            self._last_fetch = time.monotonic()
+            if response.status_code in (403, 429):
+                retry_after = response.headers.get("retry-after", "")
+                wait_hint = f" Retry-After={retry_after}" if retry_after else ""
+                raise CrawlBlockedError(
+                    f"NFA returned HTTP {response.status_code}; stopping crawl to avoid access blocking.{wait_hint}"
+                )
+            response.raise_for_status()
+            limit = self.settings.max_attachment_bytes
+            content_length = response.headers.get("content-length")
+            if content_length and int(content_length) > limit:
+                raise AttachmentTooLargeError(f"attachment exceeds {limit} bytes: {url}")
+
+            chunks: list[bytes] = []
+            total = 0
+            for chunk in response.iter_bytes():
+                total += len(chunk)
+                if total > limit:
+                    raise AttachmentTooLargeError(f"attachment exceeds {limit} bytes: {url}")
+                chunks.append(chunk)
+            return response.headers.get("content-type", ""), b"".join(chunks)
 
     def fetch(self, url: str) -> FetchedPage:
         max_attempts = max(1, self.settings.http_max_retries)
