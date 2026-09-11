@@ -2,7 +2,7 @@
 
 可執行的「內政部消防署消防預防調查法令」知識庫（目前 Phase 2 / v0.2）：
 
-`crawler → 法規條文解析 → SQLite + FTS5 + NumPy → Hybrid Search → FastAPI → MCP`
+`crawler → 法規條文解析 → SQLite + FTS5 + NumPy → Hybrid Search → Ollama/Gemma answer layer → FastAPI → MCP`
 
 預設來源：
 
@@ -26,6 +26,7 @@
 - 可切換 OpenAI `text-embedding-3-small` 並要求 384 維，資料表不用修改。
 - FastAPI 查詢 API。
 - MCP stdio server，供 ChatGPT/Codex/MCP client 使用。
+- 可選本機 Ollama/Gemma 生成層：只使用現行檢索片段回答，並驗證引用編號。
 
 ## 1. 快速啟動
 
@@ -152,6 +153,27 @@ $env:DATABASE_URL = "sqlite:///./data/nfa_fire_law_openai.db"
 .venv\Scripts\python.exe -m app.cli crawl --max-laws 3
 ```
 
+### 本機 Gemma 問答
+
+若已安裝 Ollama 與 Gemma 4（預設模型為 `gemma4:e4b`），先確認服務正在執行：
+
+```powershell
+ollama run gemma4:e4b
+```
+
+接著使用回答接口；`/v1/search` 仍保留為原始檢索／除錯接口：
+
+```powershell
+curl --get 'http://localhost:8000/v1/ask' `
+  --data-urlencode 'q=請說明消防設備人員包含哪些?' `
+  --data-urlencode 'top_k=8'
+```
+
+回答層只把 hybrid search 找到的現行法規片段交給本機模型，要求以 `[1]`、`[2]`
+等證據編號引用；若 Ollama 不可用或模型輸出沒有有效引用，系統會保留原文證據，
+不會把未驗證的生成文字當成答案。可在 `.env` 調整 `LLM_BASE_URL`、`LLM_MODEL`、
+`LLM_TIMEOUT_SECONDS`、`LLM_TEMPERATURE`、`LLM_THINK` 與 `LLM_MAX_OUTPUT_TOKENS`。
+
 ## 5. 本機瀏覽器問答介面（Streamlit）
 
 安裝 UI 選配依賴：
@@ -186,6 +208,7 @@ python -m app.mcp_server
 提供工具：
 
 - `search_fire_law(query, top_k=8, law_title=None)`
+- `ask_fire_law(query, top_k=8, law_title=None)`
 - `get_fire_law_article(law_title, article)`
 - `list_fire_laws()`
 - `list_law_versions(law_id)`

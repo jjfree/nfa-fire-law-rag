@@ -46,3 +46,30 @@ def test_build_response_handles_empty_retrieval():
 
     assert response["results"] == []
     assert "沒有找到" in response["summary"]
+
+
+def test_search_question_adds_answer_layer(monkeypatch):
+    from app import streamlit_app
+
+    hit = FakeHit(
+        law_title="消防法",
+        article_label="第13條",
+        heading=None,
+        content="管理權人應依規定設置消防安全設備。",
+        source_url="https://law.nfa.gov.tw/test",
+        version_no=2,
+        vector_score=0.8,
+        lexical_score=0.9,
+        hybrid_score=0.86,
+    )
+    monkeypatch.setattr(streamlit_app, "build_response", lambda query, hits: {"results": []})
+    monkeypatch.setattr("app.search.hybrid_search", lambda query, top_k, law_title: [hit])
+    monkeypatch.setattr(
+        "app.answer.answer_question",
+        lambda query, hits: {"answer": "整理後答案。[1]", "answer_status": "ok", "answer_citations": [1]},
+    )
+
+    response = streamlit_app.search_question("問題", top_k=5)
+
+    assert response["answer"] == "整理後答案。[1]"
+    assert response["answer_status"] == "ok"

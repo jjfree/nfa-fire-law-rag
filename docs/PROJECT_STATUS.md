@@ -16,8 +16,9 @@ UI, and offline tests.
 The main gap is operational/product completeness rather than a missing core RAG
 engine: the repository has limited update/observability hardening and no
 requirements file, while the checked-in Windows launcher remains a small local
-developer entrypoint rather than an unattended service. The repository also has
-the answer-generation/citation layer outside the current implementation.
+developer entrypoint rather than an unattended service. A local Ollama/Gemma
+answer-generation layer is now implemented, with further evaluation still needed
+for answer quality and legal citation coverage.
 PostgreSQL/pgvector and Docker artifacts remain as optional residual paths and are
 not required for the Windows SQLite target.
 
@@ -32,9 +33,9 @@ not required for the Windows SQLite target.
 | Retrieval | `app/search.py` | Implemented SQLite FTS5 + NumPy hybrid path |
 | Embedding | `app/embedding.py` | Implemented deterministic hash and optional OpenAI providers |
 | Database | `app/db.py`, `app/models.py`, `scripts/init.sql` | SQLite default implemented; PostgreSQL optional |
-| API/MCP | `app/api.py`, `app/mcp_server.py` | Implemented PoC interfaces |
+| API/MCP | `app/api.py`, `app/mcp_server.py` | Implemented PoC search and cited-answer interfaces |
 | Browser UI | `app/streamlit_app.py`, `.streamlit/config.toml`, `pyproject.toml` `ui` extra | Local read-only Streamlit Q&A/evidence interface implemented |
-| Tests | 9 test modules plus fixtures | 26 tests passing |
+| Tests | 10 test modules plus fixtures | 35 tests passing |
 | Evaluation | `eval/phase2_queries.json`, `app/evaluation.py`, CLI `eval` | Seed evaluation implemented; corpus-dependent |
 | Config | `app/config.py`, `.env.example`; local `.env` ignored | Implemented; secrets kept local |
 | Docs | `README.md`, `AGENTS.md`, and two `docs/` files | README and operational documentation are present |
@@ -97,8 +98,9 @@ future capability, **可沿用** means keep as the current extension point, and
   crawl manifests, resumability, and richer update reporting are not yet a full
   operational workflow.
 - Metadata and provenance are stored, and the local UI displays retrieval evidence;
-  a dedicated generative answer layer that enforces citation formatting is not
-  implemented.
+  the Ollama/Gemma answer layer now generates only from current retrieved chunks
+  and rejects missing/unknown evidence citations. Broader answer-quality evaluation
+  is still needed.
 - OpenAI embeddings are supported, but provider/model/dimension compatibility is a
   configuration responsibility and there is no migration command for re-embedding.
 - Retrieval has a PostgreSQL branch, but the supported/default acceptance target is
@@ -112,7 +114,7 @@ future capability, **可沿用** means keep as the current extension point, and
 - Full update scheduler or unattended Windows task workflow.
 - Explicit database migration/versioning tooling beyond `create_all` and the current
   schema.
-- Dedicated citation/answer orchestration with mandatory source/version citations.
+- Broader answer-quality evaluation and stronger sentence-level citation coverage.
 - Production authentication, rate governance, monitoring, and deployment guidance.
 - Broader document extraction (for example ODT/DOCX) and a tested reranker.
 - A production service, unattended scheduler, or remote deployment; the checked-in
@@ -126,7 +128,7 @@ future capability, **可沿用** means keep as the current extension point, and
 | Reuse with focused hardening | `app/ingest.py`, `app/crawler/*`, `app/api.py`, `app/mcp_server.py` | Add observability, update controls, and citation contracts incrementally |
 | Retain but keep optional | `Dockerfile`, `docker-compose.yml`, `scripts/init.sql`, PostgreSQL dependencies/branches | Do not delete during this phase; never make them prerequisites |
 | No confirmed retirement | No tracked file has an uncertain enough purpose to delete | Preserve and document instead of guessing |
-| Likely refactor later | schema migration/versioning, answer layer, operational CLI, backend boundary | Schedule after the baseline is documented and tested |
+| Likely refactor later | schema migration/versioning, answer-layer quality, operational CLI, backend boundary | Schedule after the baseline is documented and tested |
 
 ## Docker/WSL/Linux residual scan
 
@@ -175,7 +177,13 @@ check, and a pytest cache permission warning. They did not fail tests.
   non-destructive setup/re-embedding guidance primary.
 - `docs/PROJECT_STATUS.md` — this evidence-backed inventory and completion report.
 - `docs/MIGRATION_PLAN_SQLITE_HYBRID_RAG.md` — Phase 0–10 staged migration plan.
-- `app/streamlit_app.py` — local browser Q&A/evidence interface over existing hybrid retrieval.
+- `app/answer.py` — local Ollama/Gemma answer generation with evidence validation.
+- `app/config.py`, `.env.example` — local LLM endpoint, model, thinking, timeout,
+  temperature, and output-limit settings.
+- `app/api.py`, `app/mcp_server.py`, `app/streamlit_app.py` — cited-answer wiring
+  while preserving raw search and evidence display.
+- `tests/test_answer.py`, `tests/test_streamlit_app.py` — offline answer-layer and
+  UI integration tests.
 - `scripts/start_streamlit.bat` — Windows launcher that starts Streamlit and opens the local Q&A URL.
 - `.streamlit/config.toml` — disables Streamlit usage statistics for local-only operation.
 - `tests/test_streamlit_app.py` — UI response/provenance tests without requiring Streamlit at import time.
@@ -189,9 +197,9 @@ artifacts were deleted; the new UI module and its test were added separately.
 
 The browser UI is now the recommended local interaction path. The next focused
 implementation remains **Phase 1: Windows runtime and repeatable local commands**,
-especially a read-only diagnostics command, followed by the dedicated answer and
-citation orchestration planned in Phase 8. Keep the UI local-only until authentication
-and deployment controls are reviewed. Likely files include:
+especially a read-only diagnostics command, followed by broader answer-quality and
+citation evaluation. Keep the UI local-only until authentication and deployment
+controls are reviewed. Likely files include:
 
 - `pyproject.toml` (only if a CLI entrypoint or dependency metadata needs a small
   adjustment);

@@ -3,6 +3,7 @@ from dataclasses import asdict
 from mcp.server.fastmcp import FastMCP
 from sqlalchemy import select
 
+from app.answer import answer_question
 from app.db import session_scope
 from app.models import Law, LawVersion
 from app.search import exact_article, hybrid_search
@@ -14,6 +15,17 @@ mcp = FastMCP("NFA Fire Law RAG")
 def search_fire_law(query: str, top_k: int = 8, law_title: str | None = None) -> list[dict]:
     """Search current NFA fire-law chunks with hybrid lexical + vector retrieval."""
     return [asdict(hit) for hit in hybrid_search(query, top_k, law_title)]
+
+
+@mcp.tool()
+def ask_fire_law(query: str, top_k: int = 8, law_title: str | None = None) -> dict:
+    """Answer a fire-law question from current retrieved chunks with citations."""
+    hits = hybrid_search(query, top_k, law_title)
+    return {
+        "query": query,
+        **answer_question(query, hits),
+        "results": [asdict(hit) for hit in hits],
+    }
 
 
 @mcp.tool()

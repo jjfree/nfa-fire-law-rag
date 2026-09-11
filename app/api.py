@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException, Query
 from sqlalchemy import select
 
 from app import __version__
+from app.answer import answer_question
 from app.db import init_db, session_scope
 from app.ingest import crawl_category, probe_category
 from app.models import Law, LawVersion
@@ -42,6 +43,17 @@ def api_crawl(max_laws: int | None = Query(default=None, ge=1, le=1000)):
 @app.get("/v1/search")
 def api_search(q: str = Query(min_length=1), top_k: int = Query(default=8, ge=1, le=50), law_title: str | None = None):
     return {"query": q, "results": [asdict(x) for x in hybrid_search(q, top_k, law_title)]}
+
+
+@app.get("/v1/ask")
+def api_ask(q: str = Query(min_length=1), top_k: int = Query(default=8, ge=1, le=50), law_title: str | None = None):
+    """Answer from current retrieved law chunks with local-model citations."""
+    hits = hybrid_search(q, top_k, law_title)
+    return {
+        "query": q,
+        **answer_question(q, hits),
+        "results": [asdict(x) for x in hits],
+    }
 
 
 @app.get("/v1/article")

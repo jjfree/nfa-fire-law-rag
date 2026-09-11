@@ -30,6 +30,16 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_embedding_model: str = "text-embedding-3-small"
 
+    # Local answer generation is optional at runtime but enabled by default for
+    # the supported Ollama/Gemma workstation setup. Retrieval remains independent.
+    llm_provider: str = "ollama"
+    llm_base_url: str = "http://127.0.0.1:11434"
+    llm_model: str = "gemma4:e4b"
+    llm_timeout_seconds: float = Field(default=180.0, ge=1.0, le=900.0)
+    llm_temperature: float = Field(default=0.1, ge=0.0, le=2.0)
+    llm_think: bool = False
+    llm_max_output_tokens: int = Field(default=512, ge=64, le=4096)
+
     hybrid_vector_weight: float = Field(default=0.72, ge=0.0, le=1.0)
     default_top_k: int = Field(default=8, ge=1, le=50)
 

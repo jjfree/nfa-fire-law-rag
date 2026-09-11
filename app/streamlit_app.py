@@ -39,10 +39,14 @@ def build_response(query: str, hits: Iterable[Any]) -> dict[str, Any]:
 
 
 def search_question(query: str, top_k: int, law_title: str | None = None) -> dict[str, Any]:
-    """Run the existing hybrid retrieval path without importing Streamlit."""
+    """Run retrieval and local evidence-grounded answer generation."""
+    from app.answer import answer_question
     from app.search import hybrid_search
 
-    return build_response(query, hybrid_search(query, top_k=top_k, law_title=law_title))
+    hits = hybrid_search(query, top_k=top_k, law_title=law_title)
+    response = build_response(query, hits)
+    response.update(answer_question(query, hits))
+    return response
 
 
 def _law_titles() -> list[str]:
@@ -56,6 +60,15 @@ def _law_titles() -> list[str]:
 
 
 def _render_response(st: Any, response: dict[str, Any]) -> None:
+    if response.get("answer"):
+        if response.get("answer_status") == "ok":
+            st.markdown(response["answer"])
+        elif response.get("answer_status") == "llm_error":
+            st.warning(response["answer"])
+            if response.get("answer_error"):
+                st.caption(f"LLM 狀態：{response['answer_error']}")
+        else:
+            st.info(response["answer"])
     st.markdown(response["summary"])
     for index, row in enumerate(response["results"], start=1):
         article = row["article_label"]
