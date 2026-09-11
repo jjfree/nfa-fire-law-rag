@@ -37,6 +37,12 @@ def _clean_title(text: str) -> str:
     return text.strip()
 
 
+def _is_retired_title(title: str) -> bool:
+    """Return whether the NFA list marks a law as retired."""
+    normalized = re.sub(r"\s+", "", title)
+    return normalized.startswith("廢")
+
+
 def discover_law_links(html: str, base_url: str) -> list[DiscoveredLawLink]:
     settings = get_settings()
     soup = BeautifulSoup(html, "html.parser")
@@ -59,6 +65,8 @@ def discover_law_links(html: str, base_url: str) -> list[DiscoveredLawLink]:
         if parsed.scheme not in ("http", "https") or (parsed.hostname or "").lower() != base_host:
             continue
         if title in NOISE_TEXT or len(title) < 2:
+            continue
+        if _is_retired_title(title):
             continue
 
         # Category/news/navigation pages often have law-like titles and query
