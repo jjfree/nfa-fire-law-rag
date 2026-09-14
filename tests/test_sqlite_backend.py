@@ -18,7 +18,7 @@ get_settings.cache_clear()
 from app.db import embedding_to_storage, engine, init_db, rebuild_fts, session_scope
 from app.embedding import HashEmbedder
 from app.models import Law, LawChunk, LawVersion
-from app.search import exact_article, hybrid_search
+from app.search import _text_lexical_score, exact_article, hybrid_search
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -44,7 +44,8 @@ def sqlite_database():
         db.flush()
         for seq, article, content in [
             (1, "第1條", "為預防火災、搶救災害及緊急救護，以維護公共安全。"),
-            (2, "第13條", "管理權人應依規定設置消防安全設備並負責維護。"),
+            (2, "第2條", "本法所稱管理權人，係指依法令或契約對各該場所具有實際支配管理權者。"),
+            (3, "第13條", "管理權人應依規定設置消防安全設備並負責維護。"),
         ]:
             vector = embedder.embed([f"消防法 {article} {content}"])[0]
             db.add(
@@ -66,7 +67,7 @@ def sqlite_database():
 def test_sqlite_creates_fts5_index_for_current_chunks():
     with session_scope() as db:
         count = db.execute(text("SELECT count(*) FROM law_chunks_fts")).scalar_one()
-    assert count == 2
+    assert count == 3
 
 
 def test_sqlite_hybrid_search_combines_fts5_and_numpy():
@@ -76,6 +77,26 @@ def test_sqlite_hybrid_search_combines_fts5_and_numpy():
     assert hits[0].article_label == "第13條"
     assert hits[0].vector_score > 0
     assert hits[0].lexical_score > 0
+
+
+def test_sqlite_definition_query_prioritizes_definition_chunk_without_article_hint():
+    hits = hybrid_search("請說明消防法規定義的管理權人", top_k=3)
+
+    assert hits[0].law_title == "消防法"
+    assert hits[0].article_label == "第2條"
+    assert hits[0].lexical_score >= 0.85
+
+
+def test_definition_boost_prefers_definition_of_query_term_over_reference():
+    query = "請說明消防法規定義的管理權人"
+    definition = "本法所稱管理權人，係指依法令或契約對各該場所具有實際支配管理權者。"
+    reference = "本須知所稱指導機構，指接受場所管理權人之委託，提供相關服務。"
+
+    definition_score = _text_lexical_score(query, "消防法", "第2條", "", definition)
+    reference_score = _text_lexical_score(query, "其他法規", "二、", "", reference)
+
+    assert definition_score == 1.0
+    assert reference_score < definition_score
 
 
 def test_sqlite_exact_article_matches_current_data():

@@ -1,0 +1,20 @@
+RAG ranking correction notes (2026-09-14)
+
+Observed issue
+- SQLite contains the definition in Fire Act Article 2, and exact_article("消防法", "第2條") finds it.
+- The natural-language query did not include an explicit article number, so article-hint boosting did not apply.
+- The current default hash embedding is deterministic lexical feature hashing, not a trained semantic embedding.
+- The lexical scorer used non-overlapping 2/3-character regex chunks. The same phrase could be split at different boundaries, causing a real CJK phrase match such as 管理權人 to score zero.
+- Hybrid ranking weights vector score at 72%, so the low hash-vector score dominated the weak lexical score.
+
+Recommended correction direction
+1. Make lexical CJK scoring use overlapping 2/3-character n-grams, aligned with the existing FTS5 query strategy.
+2. Add a conservative definition-intent boost when a query asks for a definition (定義/何謂/所稱/是指), with the strongest boost only when a query phrase appears near definition wording (所稱/係指/是指/定義).
+3. Add regression coverage with a definition chunk and verify it outranks duty-only chunks for a definition query without an explicit article number.
+4. Keep article-hint boosting, provenance, and the web fallback as safety nets; do not treat any top-k hit as sufficient evidence automatically.
+5. Longer term, evaluate a trained multilingual embedding provider instead of relying on the hash PoC.
+
+Validation after implementation
+- The real local corpus now ranks 消防法第2條 first for the reported query, with hybrid score 0.4502 and lexical score 1.0.
+- The result is above the web fallback threshold 0.35, so a clear RAG hit does not trigger web search.
+- The temporary test law accidentally inserted into the real database during an earlier failed isolation test was removed by its exact source_key and FTS was rebuilt.

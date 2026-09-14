@@ -165,7 +165,7 @@ no live crawl was run.
 | NumPy | 2.5.3; float32 array and norm calculation passed |
 | Streamlit UI dependency | `1.63.0` installed in repository `.venv` |
 | Ollama hosted web-search key | Configured only in ignored local `.env`; live cloud/web request was not run |
-| repository tests | `45 passed, 9 warnings` after the cited-answer, web-fallback, and cloud-model additions |
+| repository tests | `47 passed, 9 warnings` after the cited-answer, web-fallback, cloud-model, and ranking additions |
 
 The warnings were existing dependency/runtime warnings: `datetime.utcnow()` deprecation
 from SQLAlchemy-related defaults, the deprecated `sqlite3.version` read used for this

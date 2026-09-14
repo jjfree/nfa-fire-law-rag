@@ -155,7 +155,7 @@ def test_answer_question_uses_official_web_evidence_when_rag_score_is_low(monkey
         web_search_timeout_seconds = 30.0
         web_search_max_results = 5
         web_search_max_fetch_results = 3
-        web_search_min_hybrid_score = 0.30
+        web_search_min_hybrid_score = 0.35
         web_search_allowed_domains = "law.nfa.gov.tw,web.law.ntpc.gov.tw,laws.gov.taipei"
 
     captured = {}
@@ -208,7 +208,7 @@ def test_cloud_model_uses_cloud_endpoint_and_api_key(monkeypatch):
         web_search_timeout_seconds = 30.0
         web_search_max_results = 5
         web_search_max_fetch_results = 3
-        web_search_min_hybrid_score = 0.30
+        web_search_min_hybrid_score = 0.35
         web_search_allowed_domains = "law.nfa.gov.tw"
 
     captured = {}

@@ -189,7 +189,7 @@ Streamlit 側邊欄也可在每次查詢時選擇 `gemma4:e2b`（速度優先）
 全域設定。選擇 `gemma4:31b-cloud` 時，不論本機 RAG 是否命中，都會使用該模型；
 無命中時會先嘗試取得 web 補充資料。
 
-當本機 RAG 沒有結果或最高 hybrid 分數低於 `WEB_SEARCH_MIN_HYBRID_SCORE` 時，
+當本機 RAG 沒有結果或最高 hybrid 分數低於 `WEB_SEARCH_MIN_HYBRID_SCORE`（預設 `0.35`）時，
 系統可使用 Ollama hosted web search 作為補充，再由本機 Gemma 彙整回答。搜尋結果
 只接受 `.env` 中 `WEB_SEARCH_ALLOWED_DOMAINS` 指定的 HTTPS 官方網域，回答 API 會在
 `web_results` 回傳標題、來源連結、擷取時間與內容摘要。啟用此功能前，請在本機

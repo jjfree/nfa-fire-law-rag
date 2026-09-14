@@ -12,6 +12,10 @@ from app.models import Law, LawChunk, LawVersion
 ARTICLE_HINT_RE = re.compile(
     r"(第\s*[一二三四五六七八九十百千萬〇○零兩\d\-之]+\s*條(?:\s*之\s*[一二三四五六七八九十百千\d]+)?)"
 )
+_TEXT_TOKEN_RE = re.compile(r"[\u3400-\u9fffA-Za-z0-9]+")
+_CJK_RUN_RE = re.compile(r"[\u3400-\u9fff]+")
+_DEFINITION_QUERY_MARKERS = ("定義", "何謂", "所稱", "係指", "是指")
+_DEFINITION_CONTENT_MARKERS = ("所稱", "係指", "是指", "定義")
 
 
 @dataclass
@@ -44,18 +48,64 @@ def _cjk_fts_query(query: str) -> str:
     return " OR ".join(f'"{term}"' for term in selected)
 
 
+def _lexical_terms(value: str) -> set[str]:
+    """Return overlapping CJK n-grams and whole alphanumeric terms."""
+    terms: set[str] = set()
+    for token in _TEXT_TOKEN_RE.findall(value.lower()):
+        if re.fullmatch(r"[\u3400-\u9fff]+", token):
+            terms.update(
+                token[index : index + size]
+                for size in (2, 3)
+                for index in range(len(token) - size + 1)
+            )
+        else:
+            terms.add(token)
+    return terms
+
+
+def _definition_score(query: str, content: str) -> float:
+    """Score definition clauses that contain a phrase from the user's query."""
+    if not any(marker in query for marker in _DEFINITION_QUERY_MARKERS):
+        return 0.0
+    if not any(marker in content for marker in _DEFINITION_CONTENT_MARKERS):
+        return 0.0
+
+    query_text = "".join(_CJK_RUN_RE.findall(query))
+    definition_positions = [
+        content.find(marker)
+        for marker in _DEFINITION_CONTENT_MARKERS
+        if content.find(marker) >= 0
+    ]
+    for size in (6, 5, 4, 3):
+        for index in range(len(query_text) - size + 1):
+            phrase = query_text[index : index + size]
+            search_start = 0
+            while True:
+                phrase_position = content.find(phrase, search_start)
+                if phrase_position < 0:
+                    break
+                if any(
+                    abs(phrase_position - marker_position) <= 8
+                    for marker_position in definition_positions
+                ):
+                    return 1.0
+                search_start = phrase_position + 1
+    return 0.65
+
+
 def _text_lexical_score(
     query: str, title: str, article: str | None, heading: str | None, content: str
 ) -> float:
-    query_terms = set(re.findall(r"[\u3400-\u9fffA-Za-z0-9]{2,3}", query.lower()))
+    query_terms = _lexical_terms(query)
     if not query_terms:
         query_terms = {query.lower()}
 
     def overlap(value: str | None) -> float:
-        terms = set(re.findall(r"[\u3400-\u9fffA-Za-z0-9]{2,3}", (value or "").lower()))
+        terms = _lexical_terms(value or "")
         return len(query_terms & terms) / len(query_terms) if terms else 0.0
 
     score = max(overlap(content), overlap(heading) * 0.9, overlap(title) * 0.8)
+    score = max(score, _definition_score(query, content))
     hint = _article_hint(query)
     if hint and re.sub(r"\s+", "", article or "") == hint:
         score = max(score, 1.0)

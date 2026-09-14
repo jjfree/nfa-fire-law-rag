@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     web_search_timeout_seconds: float = Field(default=30.0, ge=1.0, le=180.0)
     web_search_max_results: int = Field(default=5, ge=1, le=10)
     web_search_max_fetch_results: int = Field(default=3, ge=1, le=5)
-    web_search_min_hybrid_score: float = Field(default=0.30, ge=0.0, le=1.0)
+    web_search_min_hybrid_score: float = Field(default=0.35, ge=0.0, le=1.0)
     web_search_allowed_domains: str = (
         "law.nfa.gov.tw,nfa.gov.tw,law.moj.gov.tw,gazette.nat.gov.tw,"
         "web.law.ntpc.gov.tw,laws.gov.taipei"
