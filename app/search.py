@@ -2,7 +2,7 @@ import re
 from dataclasses import dataclass
 
 import numpy as np
-from sqlalchemy import Float, case, cast, func, literal, select, text
+from sqlalchemy import Float, case, cast, func, literal, or_, select, text
 
 from app.config import get_settings
 from app.db import embedding_from_storage, session_scope
@@ -14,8 +14,38 @@ ARTICLE_HINT_RE = re.compile(
 )
 _TEXT_TOKEN_RE = re.compile(r"[\u3400-\u9fffA-Za-z0-9]+")
 _CJK_RUN_RE = re.compile(r"[\u3400-\u9fff]+")
-_DEFINITION_QUERY_MARKERS = ("定義", "何謂", "所稱", "係指", "是指")
-_DEFINITION_CONTENT_MARKERS = ("所稱", "係指", "是指", "定義")
+_EXPLICIT_DEFINITION_QUERY_MARKERS = ("定義", "何謂", "所稱", "係指", "是指")
+_IDENTITY_QUERY_MARKERS = ("是誰", "什麼是", "指誰")
+_ACTION_QUERY_MARKERS = (
+    "應如何",
+    "應負",
+    "應辦",
+    "義務",
+    "責任",
+    "程序",
+    "期限",
+    "罰鍰",
+    "處罰",
+    "申請",
+    "設置",
+    "維護",
+    "辦理",
+)
+_QUERY_PREFIXES = (
+    "請協助查詢",
+    "請協助說明",
+    "麻煩查詢",
+    "麻煩說明",
+    "想請問",
+    "請查詢",
+    "請說明",
+    "請問",
+)
+_DEFINITION_TERM_RE = re.compile(
+    r"(?:本法|本條例|本辦法|本規則|本須知|本標準)?所稱\s*"
+    r"(?P<term>[\u3400-\u9fffA-Za-z0-9（）()]{2,24}?)\s*"
+    r"(?:，|、|：|:|係指|是指)"
+)
 
 
 @dataclass
@@ -48,6 +78,31 @@ def _cjk_fts_query(query: str) -> str:
     return " OR ".join(f'"{term}"' for term in selected)
 
 
+def _normalize_query(query: str) -> str:
+    """Remove conversational wrappers without changing legal terminology."""
+    normalized = query.strip()
+    for prefix in _QUERY_PREFIXES:
+        if normalized.startswith(prefix):
+            normalized = normalized[len(prefix) :].lstrip(" ，、:：")
+            break
+    normalized = re.sub(r"[?？!！。]+$", "", normalized).strip()
+    return re.sub(r"\s+", " ", normalized)
+
+
+def _matched_law_titles(query: str, titles: list[str]) -> tuple[str, ...]:
+    """Route a query to the longest exact law titles it names."""
+    matches = {title for title in titles if len(title) >= 3 and title in query}
+    if not matches:
+        return ()
+    return tuple(
+        sorted(
+            title
+            for title in matches
+            if not any(title != other and title in other for other in matches)
+        )
+    )
+
+
 def _lexical_terms(value: str) -> set[str]:
     """Return overlapping CJK n-grams and whole alphanumeric terms."""
     terms: set[str] = set()
@@ -63,34 +118,35 @@ def _lexical_terms(value: str) -> set[str]:
     return terms
 
 
+def _defined_terms(content: str) -> tuple[str, ...]:
+    """Extract terms from common Taiwanese legal definition clauses."""
+    return tuple(dict.fromkeys(match.group("term") for match in _DEFINITION_TERM_RE.finditer(content)))
+
+
+def _is_definition_query(query: str) -> bool:
+    if any(marker in query for marker in _EXPLICIT_DEFINITION_QUERY_MARKERS):
+        return True
+    if any(marker in query for marker in _ACTION_QUERY_MARKERS):
+        return False
+    if any(marker in query for marker in _IDENTITY_QUERY_MARKERS):
+        return True
+    # Short noun-phrase questions such as「消防法規的主管機關」normally ask
+    # for identity/meaning even when they do not literally say「定義」.
+    return "的" in query and 0 < len("".join(_CJK_RUN_RE.findall(query))) <= 30
+
+
 def _definition_score(query: str, content: str) -> float:
-    """Score definition clauses that contain a phrase from the user's query."""
-    if not any(marker in query for marker in _DEFINITION_QUERY_MARKERS):
-        return 0.0
-    if not any(marker in content for marker in _DEFINITION_CONTENT_MARKERS):
+    """Score a clause only when it defines the term actually being asked about."""
+    terms = _defined_terms(content)
+    if not terms or not _is_definition_query(query):
         return 0.0
 
     query_text = "".join(_CJK_RUN_RE.findall(query))
-    definition_positions = [
-        content.find(marker)
-        for marker in _DEFINITION_CONTENT_MARKERS
-        if content.find(marker) >= 0
-    ]
-    for size in (6, 5, 4, 3):
-        for index in range(len(query_text) - size + 1):
-            phrase = query_text[index : index + size]
-            search_start = 0
-            while True:
-                phrase_position = content.find(phrase, search_start)
-                if phrase_position < 0:
-                    break
-                if any(
-                    abs(phrase_position - marker_position) <= 8
-                    for marker_position in definition_positions
-                ):
-                    return 1.0
-                search_start = phrase_position + 1
-    return 0.65
+    if any(term in query_text for term in terms):
+        return 1.0
+    if any(marker in query for marker in _EXPLICIT_DEFINITION_QUERY_MARKERS):
+        return 0.55
+    return 0.0
 
 
 def _text_lexical_score(
@@ -114,11 +170,14 @@ def _text_lexical_score(
 
 def _sqlite_hybrid_search(query: str, top_k: int, law_title: str | None) -> list[SearchHit]:
     settings = get_settings()
+    query = _normalize_query(query) or query
     query_vector = np.asarray(get_embedder().embed([query])[0], dtype=np.float32)
     query_norm = np.linalg.norm(query_vector) or 1.0
     match_query = _cjk_fts_query(query)
 
     with session_scope() as db:
+        titles = list(db.scalars(select(Law.title).distinct()))
+        matched_titles = _matched_law_titles(query, titles)
         candidate_ids: list[int] = []
         if match_query:
             fts_rows = db.execute(
@@ -153,13 +212,23 @@ def _sqlite_hybrid_search(query: str, top_k: int, law_title: str | None) -> list
             .join(Law, LawVersion.law_id == Law.id)
             .where(LawVersion.is_current.is_(True))
         )
-        if candidate_ids:
+        if candidate_ids and matched_titles:
+            stmt = stmt.where(
+                or_(LawChunk.id.in_(candidate_ids), Law.title.in_(matched_titles))
+            )
+        elif candidate_ids:
             stmt = stmt.where(LawChunk.id.in_(candidate_ids))
+        elif matched_titles:
+            stmt = stmt.where(Law.title.in_(matched_titles))
         if law_title:
             stmt = stmt.where(Law.title.ilike(f"%{law_title}%"))
         rows = db.execute(stmt).all()
 
-        vector_weight = settings.hybrid_vector_weight
+        vector_weight = (
+            settings.hash_vector_weight
+            if settings.embedding_provider.lower() == "hash"
+            else settings.hybrid_vector_weight
+        )
         lexical_weight = 1.0 - vector_weight
         scored: list[tuple[float, SearchHit]] = []
         for row in rows:
@@ -170,6 +239,8 @@ def _sqlite_hybrid_search(query: str, top_k: int, law_title: str | None) -> list
             lexical_score = _text_lexical_score(
                 query, row.title, row.article_label, row.heading, row.content
             )
+            if row.title in matched_titles:
+                lexical_score = min(1.0, lexical_score + settings.law_title_match_boost)
             hybrid_score = vector_score * vector_weight + lexical_score * lexical_weight
             scored.append(
                 (
@@ -199,6 +270,7 @@ def hybrid_search(
 ) -> list[SearchHit]:
     settings = get_settings()
     top_k = top_k or settings.default_top_k
+    query = _normalize_query(query) or query
     if settings.storage_backend.lower() == "sqlite":
         return _sqlite_hybrid_search(query, top_k, law_title)
     query_vector = get_embedder().embed([query])[0]

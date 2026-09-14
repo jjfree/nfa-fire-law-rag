@@ -21,7 +21,7 @@
 - Semantic `SHA-256` 內容指紋：只雜湊穩定法規內容，排除「列印時間／頁尾」等動態 chrome；未變更法規不重做 embedding，變更時保留舊版本。
 - 法規 detail page 的同網域 PDF/下載附件會嘗試抽取文字，包含 A003 常見的「附件清單頁 → 實際 PDF」一層連結，作為 `附件：檔名` chunks 一併存入與查詢；掃描型或失敗附件會記錄在 version metadata，不中斷整批 crawl。
 - SQLite default：單一 `data/nfa_fire_law.db` 檔案，不需要 Docker、WSL、資料庫服務或管理員權限。
-- FTS5 lexical retrieval + NumPy cosine vector retrieval，先以 FTS5 篩選候選，再融合 hybrid score。
+- FTS5 lexical retrieval + NumPy cosine vector retrieval；候選集合會加入查詢中明確提到的法規，並以法規名稱、條號與通用定義句型 rerank。
 - PostgreSQL + `pgvector` + `pg_trgm` 保留為可選 backend，不影響 SQLite 預設流程。
 - 無 API key 也能跑：預設 deterministic character n-gram hash embedding (384 維)。
 - 可切換 OpenAI `text-embedding-3-small` 並要求 384 維，資料表不用修改。
@@ -142,6 +142,10 @@ EMBEDDING_DIM=384
 ```
 
 這是 character n-gram feature hashing，目的是讓 PoC 完整可執行；品質不等同真正的 multilingual embedding model。
+因此 SQLite 預設以 `HASH_VECTOR_WEIGHT=0.30` 限制 hash cosine 的影響，讓可解釋的
+法規名稱、中文詞彙與 `本法所稱 X` 等定義訊號主導排序。切換到訓練過的 embedding
+provider 時，則使用 `HYBRID_VECTOR_WEIGHT`。`LAW_TITLE_MATCH_BOOST` 可調整明確法規
+名稱的 routing 加權。
 
 ### OpenAI Embedding
 
@@ -302,7 +306,7 @@ python -m pytest -q
 # macOS/Linux: source .venv/bin/activate
 ```
 
-測試 fixture 覆蓋：分類連結探索、`LSID`/`ldate` 去重、NFA print URL、真實舊版列印頁格式、章節/條號切分、metadata 擷取、列印時間不影響 semantic hash、hash embedding deterministic，以及 SQLite schema/FTS5/hybrid search。
+測試 fixture 覆蓋：分類連結探索、`LSID`/`ldate` 去重、NFA print URL、真實舊版列印頁格式、章節/條號切分、metadata 擷取、列印時間不影響 semantic hash、hash embedding deterministic，以及 SQLite schema/FTS5/hybrid search；定義檢索另以多個 `本法所稱 X` 案例驗證，不依賴特定名詞硬編碼。
 
 ## 11. 下一版建議
 

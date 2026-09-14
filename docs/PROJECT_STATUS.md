@@ -82,8 +82,9 @@ future capability, **可沿用** means keep as the current extension point, and
 - Same-host PDF attachments are bounded, extracted when searchable, and reported
   when skipped or failed.
 - FTS5 indexing adds CJK n-grams and stores identifiers needed to map hits to chunks.
-- SQLite retrieval fuses FTS5 candidate retrieval, text overlap, and NumPy cosine
-  similarity; exact article lookup is also present.
+- SQLite retrieval fuses FTS5 candidates, exact law-title routing, structured legal
+  definition signals, text overlap, and NumPy cosine similarity. Hash embeddings
+  use a lower provider-specific vector weight; exact article lookup is also present.
 - FastAPI health/search/article/law/version/admin endpoints and MCP tools exist.
 - A local Streamlit UI supports natural-language queries, law filtering, result
   counts, current-version evidence, scores, and source links without an API key.
@@ -165,7 +166,7 @@ no live crawl was run.
 | NumPy | 2.5.3; float32 array and norm calculation passed |
 | Streamlit UI dependency | `1.63.0` installed in repository `.venv` |
 | Ollama hosted web-search key | Configured only in ignored local `.env`; live cloud/web request was not run |
-| repository tests | `47 passed, 9 warnings` after the cited-answer, web-fallback, cloud-model, and ranking additions |
+| repository tests | `51 passed, 12 warnings` after the cited-answer, web-fallback, cloud-model, and provider-aware definition-ranking additions |
 
 The warnings were existing dependency/runtime warnings: `datetime.utcnow()` deprecation
 from SQLAlchemy-related defaults, the deprecated `sqlite3.version` read used for this

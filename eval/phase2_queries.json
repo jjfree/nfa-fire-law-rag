@@ -23,5 +23,15 @@
     "query": "各類場所消防安全設備設置標準對消防安全設備如何規範？",
     "expected_law": "各類場所消防安全設備設置標準",
     "expected_article": null
+  },
+  {
+    "query": "請說明消防法規定義的管理權人？",
+    "expected_law": "消防法",
+    "expected_article": "第2條"
+  },
+  {
+    "query": "請說明消防法規的主管機關？",
+    "expected_law": "消防法",
+    "expected_article": "第3條"
   }
 ]

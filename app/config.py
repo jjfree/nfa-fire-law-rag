@@ -57,7 +57,12 @@ class Settings(BaseSettings):
         "web.law.ntpc.gov.tw,laws.gov.taipei"
     )
 
+    # The deterministic hash embedder is useful offline, but its cosine score is
+    # not semantic enough to dominate legal-term matching. Trained embedding
+    # providers keep the original vector-heavy blend.
+    hash_vector_weight: float = Field(default=0.30, ge=0.0, le=1.0)
     hybrid_vector_weight: float = Field(default=0.72, ge=0.0, le=1.0)
+    law_title_match_boost: float = Field(default=0.12, ge=0.0, le=1.0)
     default_top_k: int = Field(default=8, ge=1, le=50)
 
     api_host: str = "0.0.0.0"

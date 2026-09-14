@@ -18,3 +18,22 @@ Validation after implementation
 - The real local corpus now ranks 消防法第2條 first for the reported query, with hybrid score 0.4502 and lexical score 1.0.
 - The result is above the web fallback threshold 0.35, so a clear RAG hit does not trigger web search.
 - The temporary test law accidentally inserted into the real database during an earlier failed isolation test was removed by its exact source_key and FTS was rebuilt.
+
+Systemic retrieval correction (2026-09-14)
+
+New observed issue
+- The query「請說明消防法規的主管機關?」recalled 消防法第3條 as the second FTS candidate, but the 72% hash-vector weight reranked it below the first eight final results.
+- Its previous top hybrid score was only 0.3452, so the score-based fallback gate incorrectly initiated web search even though the authoritative local clause existed.
+
+Implemented direction
+1. Normalize conversational query prefixes and trailing punctuation before retrieval.
+2. Detect the longest exact law title named in a query, union that law's current chunks with FTS candidates, and apply a bounded title-routing boost.
+3. Parse defined terms from general legal forms such as「本法所稱 X，係指」and「本法所稱 X：」; boost only when X is the term asked about.
+4. Distinguish identity/definition questions from obligation and procedure questions so definition clauses do not suppress operative provisions.
+5. Use a 30% vector weight for the deterministic hash provider while retaining the configurable 72% weight for trained embedding providers.
+6. Validate multiple generated definition cases and a competing non-definition reference in a temporary SQLite fixture.
+
+Validation
+- Full offline suite: 51 passed; remaining warnings are SQLAlchemy utcnow deprecation and pytest cache permissions.
+- Real local corpus:「主管機關」now ranks 消防法第3條 first at 0.7528 and does not trigger web fallback.
+- Real local corpus:「管理權人」still ranks 消防法第2條 first at 0.8019 and does not trigger web fallback.
