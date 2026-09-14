@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.db import session_scope
 from app.models import Conversation, ConversationMessage
@@ -19,7 +19,8 @@ DEFAULT_CONVERSATION_TITLE = "新對話"
 class ConversationSummary:
     id: int
     title: str
-    updated_at: datetime
+    last_message_at: datetime | None
+    created_at: datetime
 
 
 @dataclass(frozen=True)
@@ -42,10 +43,25 @@ def _title_from_query(query: str) -> str:
 
 def list_conversations() -> list[ConversationSummary]:
     with session_scope() as db:
-        rows = db.scalars(
-            select(Conversation).order_by(Conversation.updated_at.desc(), Conversation.id.desc())
+        latest_message_at = (
+            select(func.max(ConversationMessage.created_at))
+            .where(ConversationMessage.conversation_id == Conversation.id)
+            .scalar_subquery()
+        )
+        last_activity_at = func.coalesce(latest_message_at, Conversation.created_at)
+        rows = db.execute(
+            select(Conversation, latest_message_at.label("last_message_at"))
+            .order_by(last_activity_at.desc(), Conversation.id.desc())
         ).all()
-        return [ConversationSummary(row.id, row.title, row.updated_at) for row in rows]
+        return [
+            ConversationSummary(
+                conversation.id,
+                conversation.title,
+                last_message_at,
+                conversation.created_at,
+            )
+            for conversation, last_message_at in rows
+        ]
 
 
 def create_conversation(title: str = DEFAULT_CONVERSATION_TITLE) -> int:

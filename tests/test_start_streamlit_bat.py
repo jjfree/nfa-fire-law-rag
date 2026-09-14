@@ -11,9 +11,10 @@ def test_windows_launcher_uses_repository_venv_and_loopback_url() -> None:
     assert "--server.address 127.0.0.1" in text
     assert "--server.headless true" in text
     assert 'start "" "%URL%"' in text
-    assert "Get-NetTCPConnection" in text
+    assert "netstat -ano" in text
     assert "Get-CimInstance Win32_Process" in text
-    assert "Stop-Process" in text
+    assert "taskkill.exe" in text
+    assert "@('/PID', [string]$owner, '/T', '/F')" in text
     assert "/_stcore/health" in text
 
 

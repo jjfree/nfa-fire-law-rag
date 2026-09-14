@@ -202,6 +202,8 @@ def test_conversations_persist_title_and_exchange():
     conversations = list_conversations()
     conversation = next(item for item in conversations if item.id == conversation_id)
     assert conversation.title == "消防設備問題"
+    assert conversation.last_message_at is not None
+    assert conversation.created_at is not None
     messages = get_messages(conversation_id)
     assert [message.role for message in messages] == ["user", "assistant"]
     assert messages[1].response["results"][0]["article_label"] == "第13條"

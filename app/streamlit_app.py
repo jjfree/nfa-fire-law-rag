@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
+from datetime import UTC
 from html import escape
 from typing import Any
 
@@ -274,9 +275,37 @@ def _ensure_active_conversation(st: Any) -> tuple[int, list[Any]]:
     return conversation_id, conversations
 
 
+def _conversation_time_label(conversation: Any) -> str:
+    timestamp = conversation.last_message_at or conversation.created_at
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=UTC)
+    local_time = timestamp.astimezone().strftime("%Y/%m/%d %H:%M:%S")
+    prefix = "最後對談" if conversation.last_message_at else "尚未對談，建立時間"
+    return f"{prefix}：{local_time}"
+
+
 def _render_conversation_sidebar(st: Any, conversations: list[Any], active_id: int) -> None:
     from app.conversations import create_conversation, delete_conversation, rename_conversation
 
+    st.markdown(
+        """
+        <style>
+        section[data-testid="stSidebar"] button[data-testid="stBaseButton-secondary"] > div {
+            width: 100%;
+            justify-content: flex-start;
+        }
+        section[data-testid="stSidebar"] button[data-testid="stBaseButton-secondary"]
+        [data-testid="stMarkdownContainer"] {
+            width: 100%;
+            text-align: left;
+        }
+        section[data-testid="stSidebar"] button[data-testid="stBaseButton-secondary"] p {
+            text-align: left;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     heading_col, action_col = st.columns([3, 2])
     with heading_col:
         st.header("對話列表")
@@ -285,26 +314,33 @@ def _render_conversation_sidebar(st: Any, conversations: list[Any], active_id: i
             st.session_state.active_conversation_id = create_conversation()
             st.rerun()
     st.caption("對話會保存在本機 SQLite，重啟後仍可繼續。")
-    for conversation in conversations:
-        select_col, menu_col = st.columns([5, 1])
-        with select_col:
-            label = f"▶ {conversation.title}" if conversation.id == active_id else conversation.title
-            if st.button(label, key=f"select_conversation_{conversation.id}", use_container_width=True):
-                st.session_state.active_conversation_id = conversation.id
-                st.rerun()
-        with menu_col, st.popover("⋯", use_container_width=True):
-            new_title = st.text_input(
-                "對話標題",
-                value=conversation.title,
-                key=f"conversation_title_{conversation.id}",
-            )
-            if st.button("儲存標題", key=f"rename_conversation_{conversation.id}"):
-                rename_conversation(conversation.id, new_title)
-                st.rerun()
-            if st.button("刪除對話", key=f"delete_conversation_{conversation.id}"):
-                delete_conversation(conversation.id)
-                st.session_state.pop("active_conversation_id", None)
-                st.rerun()
+    conversation_height = 260 if len(conversations) > 5 else "content"
+    with st.container(height=conversation_height, border=False):
+        for conversation in conversations:
+            select_col, menu_col = st.columns([5, 1])
+            with select_col:
+                label = f"▶ {conversation.title}" if conversation.id == active_id else conversation.title
+                if st.button(
+                    label,
+                    key=f"select_conversation_{conversation.id}",
+                    help=_conversation_time_label(conversation),
+                    use_container_width=True,
+                ):
+                    st.session_state.active_conversation_id = conversation.id
+                    st.rerun()
+            with menu_col, st.popover("⋯", use_container_width=True):
+                new_title = st.text_input(
+                    "對話標題",
+                    value=conversation.title,
+                    key=f"conversation_title_{conversation.id}",
+                )
+                if st.button("儲存標題", key=f"rename_conversation_{conversation.id}"):
+                    rename_conversation(conversation.id, new_title)
+                    st.rerun()
+                if st.button("刪除對話", key=f"delete_conversation_{conversation.id}"):
+                    delete_conversation(conversation.id)
+                    st.session_state.pop("active_conversation_id", None)
+                    st.rerun()
 
 
 def main() -> None:
