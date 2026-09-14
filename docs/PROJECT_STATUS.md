@@ -101,8 +101,9 @@ future capability, **可沿用** means keep as the current extension point, and
   operational workflow.
 - Metadata and provenance are stored, and the local UI displays retrieval evidence;
   the Ollama/Gemma answer layer now generates only from current retrieved chunks
-  and rejects missing/unknown evidence citations. Broader answer-quality evaluation
-  is still needed.
+  and rejects missing/unknown evidence citations. Answer-facing retrieval conditionally
+  uses the default Gemma cloud model to rerank entity comparison and authority/scope questions,
+  while raw search remains deterministic. Broader answer-quality evaluation is still needed.
 - OpenAI embeddings are supported, but provider/model/dimension compatibility is a
   configuration responsibility and there is no migration command for re-embedding.
 - Retrieval has a PostgreSQL branch, but the supported/default acceptance target is
@@ -181,6 +182,8 @@ check, and a pytest cache permission warning. They did not fail tests.
 - `docs/PROJECT_STATUS.md` — this evidence-backed inventory and completion report.
 - `docs/MIGRATION_PLAN_SQLITE_HYBRID_RAG.md` — Phase 0–10 staged migration plan.
 - `app/answer.py` — local/cloud Ollama Gemma answer generation with evidence validation.
+- `app/rerank.py` — conditional answer-evidence reranking for comparison/scope questions,
+  with deterministic search and failure fallback preserved.
 - `app/web_search.py` — bounded Ollama hosted web-search/fetch fallback with HTTPS
   official-domain allowlisting and timestamped provenance.
 - `app/config.py`, `.env.example` — local LLM endpoint, model, thinking, timeout,
@@ -190,8 +193,9 @@ check, and a pytest cache permission warning. They did not fail tests.
   search and evidence display.
 - `app/models.py` — adds `conversations` and `conversation_messages` tables; SQLite
   `create_all` adds them automatically to an existing local database.
-- `tests/test_answer.py`, `tests/test_web_search.py`, `tests/test_streamlit_app.py` —
-  offline answer-layer, web-fallback, and UI integration tests.
+- `tests/test_answer.py`, `tests/test_rerank.py`, `tests/test_web_search.py`,
+  `tests/test_streamlit_app.py` — offline answer-layer, reranking, web-fallback, and UI
+  integration tests.
 - `scripts/start_streamlit.bat` — Windows launcher that stops only the repository's
   prior Streamlit process on the configured local port, waits for the health endpoint,
   and then opens the local Q&A URL.

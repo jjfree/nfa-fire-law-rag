@@ -65,6 +65,17 @@ class Settings(BaseSettings):
     law_title_match_boost: float = Field(default=0.12, ge=0.0, le=1.0)
     default_top_k: int = Field(default=8, ge=1, le=50)
 
+    # Answer-facing retrieval can use Gemma cloud to rerank ambiguous
+    # role comparison/scope questions. Raw search remains deterministic.
+    reranker_enabled: bool = True
+    reranker_provider: str = "ollama"
+    reranker_model: str = "gemma4:31b-cloud"
+    reranker_candidate_limit: int = Field(default=24, ge=8, le=50)
+    reranker_input_limit: int = Field(default=12, ge=8, le=24)
+    reranker_timeout_seconds: float = Field(default=30.0, ge=1.0, le=180.0)
+    reranker_max_output_tokens: int = Field(default=128, ge=32, le=1024)
+    reranker_max_chars_per_candidate: int = Field(default=160, ge=80, le=2000)
+
     api_host: str = "0.0.0.0"
     api_port: int = 8000
 

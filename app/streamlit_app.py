@@ -197,9 +197,9 @@ def search_question(
 ) -> dict[str, Any]:
     """Run retrieval and local evidence-grounded answer generation."""
     from app.answer import answer_question
-    from app.search import hybrid_search
+    from app.rerank import retrieve_answer_hits
 
-    hits = hybrid_search(query, top_k=top_k, law_title=law_title)
+    hits = retrieve_answer_hits(query, top_k=top_k, law_title=law_title)
     response = build_response(query, hits)
     response.update(answer_question(query, hits, model=llm_model))
     return response

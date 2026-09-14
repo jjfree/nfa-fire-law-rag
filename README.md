@@ -184,10 +184,16 @@ curl --get 'http://localhost:8000/v1/ask' `
   --data-urlencode 'top_k=8'
 ```
 
-回答層只把 hybrid search 找到的現行法規片段交給本機模型，要求以 `[1]`、`[2]`
+回答層只把本機檢索找到的現行法規片段交給模型，要求以 `[1]`、`[2]`
 等證據編號引用；若 Ollama 不可用或模型輸出沒有有效引用，系統會保留原文證據，
 不會把未驗證的生成文字當成答案。可在 `.env` 調整 `LLM_BASE_URL`、`LLM_MODEL`、
 `LLM_TIMEOUT_SECONDS`、`LLM_TEMPERATURE`、`LLM_THINK` 與 `LLM_MAX_OUTPUT_TOKENS`。
+遇到角色比較或權限／業務範圍問題時，回答入口會先取較大的 hybrid 候選集，再由
+固定的 `gemma4:31b-cloud` 只重新排列候選條文，避免真正分配職務的條文被大量「僅提到
+角色名稱」的條文擠出前 8 筆。原始 `/v1/search` 不使用此步驟，仍可用來檢查原始
+檢索分數。此功能可用 `RERANKER_ENABLED` 關閉，並可調整 `RERANKER_MODEL`、
+`RERANKER_CANDIDATE_LIMIT`、`RERANKER_TIMEOUT_SECONDS` 與輸出限制；失敗時會安全回退
+到原始排序，不會阻斷回答。
 Streamlit 前端會將已驗證的 `[N]` 引用轉成頁內連結，點擊後跳到並展開對應的本機
 RAG 條文或 web 補充證據；模型仍只需輸出原本的編號格式。
 Streamlit 側邊欄也可在每次查詢時選擇 `gemma4:e2b`（速度優先）或

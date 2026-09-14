@@ -124,7 +124,9 @@ def test_search_question_adds_answer_layer(monkeypatch):
         hybrid_score=0.86,
     )
     monkeypatch.setattr(streamlit_app, "build_response", lambda query, hits: {"results": []})
-    monkeypatch.setattr("app.search.hybrid_search", lambda query, top_k, law_title: [hit])
+    monkeypatch.setattr(
+        "app.rerank.retrieve_answer_hits", lambda query, top_k, law_title: [hit]
+    )
     monkeypatch.setattr(
         "app.answer.answer_question",
         lambda query, hits, model: {

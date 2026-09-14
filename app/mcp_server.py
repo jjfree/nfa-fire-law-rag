@@ -6,6 +6,7 @@ from sqlalchemy import select
 from app.answer import answer_question
 from app.db import session_scope
 from app.models import Law, LawVersion
+from app.rerank import retrieve_answer_hits
 from app.search import exact_article, hybrid_search
 
 mcp = FastMCP("NFA Fire Law RAG")
@@ -20,7 +21,7 @@ def search_fire_law(query: str, top_k: int = 8, law_title: str | None = None) ->
 @mcp.tool()
 def ask_fire_law(query: str, top_k: int = 8, law_title: str | None = None) -> dict:
     """Answer a fire-law question from current retrieved chunks with citations."""
-    hits = hybrid_search(query, top_k, law_title)
+    hits = retrieve_answer_hits(query, top_k, law_title)
     return {
         "query": query,
         **answer_question(query, hits),
