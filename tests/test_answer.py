@@ -79,6 +79,31 @@ def test_generate_answer_uses_local_answerer_and_returns_citations(monkeypatch):
     assert "消防安全設備" in result.answer
 
 
+def test_generate_answer_accepts_per_request_model_override(monkeypatch):
+    class FakeSettings:
+        llm_provider = "ollama"
+        llm_base_url = "http://127.0.0.1:11434"
+        llm_model = "gemma4:e4b"
+        llm_timeout_seconds = 180.0
+        llm_temperature = 0.1
+        llm_think = False
+        llm_max_output_tokens = 512
+
+    captured = {}
+    monkeypatch.setattr("app.answer.get_settings", lambda: FakeSettings())
+
+    def fake_complete(self, prompt):
+        captured["model"] = self.model
+        return "快速回答。[1]"
+
+    monkeypatch.setattr("app.answer.OllamaAnswerer.complete", fake_complete)
+
+    result = generate_answer("問題", [_hit()], model="gemma4:e2b")
+
+    assert result.status == "ok"
+    assert captured["model"] == "gemma4:e2b"
+
+
 def test_generate_answer_does_not_expose_uncited_model_output(monkeypatch):
     class FakeSettings:
         llm_provider = "ollama"

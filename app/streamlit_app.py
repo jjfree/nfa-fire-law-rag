@@ -9,6 +9,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
+ANSWER_MODEL_OPTIONS = ("gemma4:e2b", "gemma4:e4b")
+
 
 def build_response(query: str, hits: Iterable[Any]) -> dict[str, Any]:
     """Convert retrieval hits into a UI-safe, provenance-preserving response."""
@@ -38,14 +40,19 @@ def build_response(query: str, hits: Iterable[Any]) -> dict[str, Any]:
     return {"query": query, "summary": summary, "results": rows}
 
 
-def search_question(query: str, top_k: int, law_title: str | None = None) -> dict[str, Any]:
+def search_question(
+    query: str,
+    top_k: int,
+    law_title: str | None = None,
+    llm_model: str | None = None,
+) -> dict[str, Any]:
     """Run retrieval and local evidence-grounded answer generation."""
     from app.answer import answer_question
     from app.search import hybrid_search
 
     hits = hybrid_search(query, top_k=top_k, law_title=law_title)
     response = build_response(query, hits)
-    response.update(answer_question(query, hits))
+    response.update(answer_question(query, hits, model=llm_model))
     return response
 
 
@@ -103,6 +110,19 @@ def main() -> None:
             titles = ["全部法規"]
             st.warning(f"無法載入法規清單：{type(exc).__name__}: {exc}")
         selected_title = st.selectbox("法規篩選", titles)
+        selected_model = st.selectbox(
+            "回答模型",
+            ANSWER_MODEL_OPTIONS,
+            index=(
+                ANSWER_MODEL_OPTIONS.index(settings.llm_model)
+                if settings.llm_model in ANSWER_MODEL_OPTIONS
+                else len(ANSWER_MODEL_OPTIONS) - 1
+            ),
+            format_func=lambda model: (
+                f"{model}（速度優先）" if model == "gemma4:e2b" else f"{model}（品質優先）"
+            ),
+        )
+        st.caption("e2b 較快；e4b 通常較完整。兩者都只依據檢索到的現行法規回答。")
         st.divider()
         st.caption(f"Backend：{settings.storage_backend}")
         st.caption(f"Embedding：{settings.embedding_provider} / {settings.embedding_dim} 維")
@@ -132,6 +152,7 @@ def main() -> None:
                 query,
                 top_k=top_k,
                 law_title=None if selected_title == "全部法規" else selected_title,
+                llm_model=selected_model,
             )
         except Exception as exc:  # noqa: BLE001 - surface local DB/config errors in the UI
             error = f"查詢失敗：{type(exc).__name__}: {exc}"

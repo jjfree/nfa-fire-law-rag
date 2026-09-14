@@ -139,7 +139,7 @@ class OllamaAnswerer:
         return content.strip()
 
 
-def generate_answer(query: str, hits: list[Any]) -> AnswerResult:
+def generate_answer(query: str, hits: list[Any], model: str | None = None) -> AnswerResult:
     """Generate a cited answer from retrieved hits, without silently falling back."""
     if not hits:
         return AnswerResult(
@@ -160,7 +160,7 @@ def generate_answer(query: str, hits: list[Any]) -> AnswerResult:
     try:
         answer = OllamaAnswerer(
             base_url=settings.llm_base_url,
-            model=settings.llm_model,
+            model=model or settings.llm_model,
             timeout_seconds=settings.llm_timeout_seconds,
             temperature=settings.llm_temperature,
             think=settings.llm_think,
@@ -176,9 +176,9 @@ def generate_answer(query: str, hits: list[Any]) -> AnswerResult:
     return AnswerResult(answer=answer, status="ok", citations=citations)
 
 
-def answer_question(query: str, hits: list[Any]) -> dict[str, Any]:
+def answer_question(query: str, hits: list[Any], model: str | None = None) -> dict[str, Any]:
     """Return a serializable generation result for API, MCP, and UI callers."""
-    result = generate_answer(query, hits)
+    result = generate_answer(query, hits, model=model)
     return {
         "answer": result.answer,
         "answer_status": result.status,

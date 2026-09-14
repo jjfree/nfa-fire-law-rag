@@ -66,10 +66,14 @@ def test_search_question_adds_answer_layer(monkeypatch):
     monkeypatch.setattr("app.search.hybrid_search", lambda query, top_k, law_title: [hit])
     monkeypatch.setattr(
         "app.answer.answer_question",
-        lambda query, hits: {"answer": "整理後答案。[1]", "answer_status": "ok", "answer_citations": [1]},
+        lambda query, hits, model: {
+            "answer": f"整理後答案。[1]（{model}）",
+            "answer_status": "ok",
+            "answer_citations": [1],
+        },
     )
 
-    response = streamlit_app.search_question("問題", top_k=5)
+    response = streamlit_app.search_question("問題", top_k=5, llm_model="gemma4:e2b")
 
-    assert response["answer"] == "整理後答案。[1]"
+    assert response["answer"] == "整理後答案。[1]（gemma4:e2b）"
     assert response["answer_status"] == "ok"

@@ -35,7 +35,7 @@ not required for the Windows SQLite target.
 | Database | `app/db.py`, `app/models.py`, `scripts/init.sql` | SQLite default implemented; PostgreSQL optional |
 | API/MCP | `app/api.py`, `app/mcp_server.py` | Implemented PoC search and cited-answer interfaces |
 | Browser UI | `app/streamlit_app.py`, `.streamlit/config.toml`, `pyproject.toml` `ui` extra | Local read-only Streamlit Q&A/evidence interface implemented |
-| Tests | 10 test modules plus fixtures | 35 tests passing |
+| Tests | 10 test modules plus fixtures | 36 tests passing |
 | Evaluation | `eval/phase2_queries.json`, `app/evaluation.py`, CLI `eval` | Seed evaluation implemented; corpus-dependent |
 | Config | `app/config.py`, `.env.example`; local `.env` ignored | Implemented; secrets kept local |
 | Docs | `README.md`, `AGENTS.md`, and two `docs/` files | README and operational documentation are present |

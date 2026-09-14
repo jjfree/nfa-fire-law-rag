@@ -158,6 +158,7 @@ $env:DATABASE_URL = "sqlite:///./data/nfa_fire_law_openai.db"
 若已安裝 Ollama 與 Gemma 4（預設模型為 `gemma4:e4b`），先確認服務正在執行：
 
 ```powershell
+ollama pull gemma4:e2b
 ollama run gemma4:e4b
 ```
 
@@ -173,6 +174,8 @@ curl --get 'http://localhost:8000/v1/ask' `
 等證據編號引用；若 Ollama 不可用或模型輸出沒有有效引用，系統會保留原文證據，
 不會把未驗證的生成文字當成答案。可在 `.env` 調整 `LLM_BASE_URL`、`LLM_MODEL`、
 `LLM_TIMEOUT_SECONDS`、`LLM_TEMPERATURE`、`LLM_THINK` 與 `LLM_MAX_OUTPUT_TOKENS`。
+Streamlit 側邊欄也可在每次查詢時選擇 `gemma4:e2b`（速度優先）或
+`gemma4:e4b`（品質優先）；此選擇不會改寫全域設定。
 
 ## 5. 本機瀏覽器問答介面（Streamlit）
 
