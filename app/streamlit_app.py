@@ -10,7 +10,6 @@ import re
 from collections.abc import Iterable
 from html import escape
 from typing import Any
-from urllib.parse import quote
 
 ANSWER_MODEL_OPTIONS = ("gemma4:e2b", "gemma4:e4b", "gemma4:31b-cloud")
 _CITATION_RE = re.compile(r"\[(\d+)\]")
@@ -22,7 +21,7 @@ def linkify_citations(
     evidence_count: int,
     anchor_prefix: str = "evidence",
 ) -> str:
-    """Turn validated evidence numbers into safe links that open their expander."""
+    """Turn validated evidence numbers into safe links to client-side cards."""
     valid_citations = {
         int(citation)
         for citation in citations
@@ -35,11 +34,7 @@ def linkify_citations(
         if citation not in valid_citations:
             return match.group(0)
         anchor_id = f"{anchor_prefix}-{citation}"
-        target = quote(f"{anchor_prefix}:{citation}", safe="")
-        return (
-            f'<a href="?evidence={target}#{anchor_id}" target="_self">'
-            f"[{citation}]</a>"
-        )
+        return f'<a href="#{escape(anchor_id, quote=True)}">[{citation}]</a>'
 
     return _CITATION_RE.sub(replace, safe_answer)
 
@@ -51,18 +46,119 @@ def evidence_anchor(index: int, anchor_prefix: str = "evidence") -> str:
     return f'<span id="{escape(anchor_prefix, quote=True)}-{index}"></span>'
 
 
-def _requested_evidence(st: Any) -> tuple[str, int] | None:
-    """Read the citation target that caused the current Streamlit rerun."""
-    query_params = getattr(st, "query_params", None)
-    raw_target = query_params.get("evidence") if query_params is not None else None
-    if not raw_target or ":" not in raw_target:
-        return None
-    anchor_prefix, raw_index = raw_target.rsplit(":", 1)
-    try:
-        index = int(raw_index)
-    except ValueError:
-        return None
-    return (anchor_prefix, index) if index > 0 else None
+_EVIDENCE_CSS = """
+<style>
+.rag-evidence-card {
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  border-radius: 0.5rem;
+  margin: 0.5rem 0;
+  overflow: hidden;
+}
+.rag-evidence-toggle {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.rag-evidence-header {
+  display: block;
+  cursor: pointer;
+  padding: 0.65rem 0.8rem;
+  font-weight: 600;
+}
+.rag-evidence-header:hover {
+  background: rgba(128, 128, 128, 0.12);
+}
+.rag-evidence-content {
+  display: none;
+  border-top: 1px solid rgba(128, 128, 128, 0.25);
+  padding: 0.75rem 0.8rem;
+}
+.rag-evidence-toggle:checked ~ .rag-evidence-content,
+.rag-evidence-card:target .rag-evidence-content {
+  display: block;
+}
+.rag-evidence-meta {
+  color: rgba(128, 128, 128, 0.95);
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+.rag-evidence-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0 0 0.75rem 0;
+  font-family: inherit;
+}
+</style>
+"""
+
+
+def _evidence_card(
+    index: int,
+    title: str,
+    metadata: str,
+    content: str,
+    source_url: str,
+    anchor_prefix: str,
+    default_expanded: bool = False,
+) -> str:
+    anchor_id = f"{anchor_prefix}-{index}"
+    safe_anchor_id = escape(anchor_id, quote=True)
+    toggle_id = f"{anchor_id}-toggle"
+    checked = " checked" if default_expanded else ""
+    return (
+        f'<div id="{safe_anchor_id}" class="rag-evidence-card">'
+        f'<input class="rag-evidence-toggle" type="checkbox" '
+        f'id="{escape(toggle_id, quote=True)}"{checked}>'
+        f'<label class="rag-evidence-header" '
+        f'for="{escape(toggle_id, quote=True)}">{escape(title)}</label>'
+        '<div class="rag-evidence-content">'
+        f'<div class="rag-evidence-meta">{escape(metadata)}</div>'
+        f'<pre class="rag-evidence-text">{escape(content)}</pre>'
+        f'<a href="{escape(source_url, quote=True)}" target="_blank" '
+        f'rel="noopener noreferrer">開啟原始來源</a>'
+        "</div></div>"
+    )
+
+
+def build_evidence_cards(
+    local_results: list[dict[str, Any]],
+    web_results: list[dict[str, Any]],
+    anchor_prefix: str = "evidence",
+) -> str:
+    """Build client-side evidence cards that open through fragment targeting."""
+    cards = [_EVIDENCE_CSS]
+    local_count = len(local_results)
+    for index, source in enumerate(web_results, start=local_count + 1):
+        cards.append(
+            _evidence_card(
+                index=index,
+                title=source["title"],
+                metadata=f"官方網頁補充資料 · 擷取時間：{source['retrieved_at']}",
+                content=source.get("content_preview", ""),
+                source_url=source["url"],
+                anchor_prefix=anchor_prefix,
+            )
+        )
+    for index, row in enumerate(local_results, start=1):
+        article = row["article_label"]
+        heading = f"｜{row['heading']}" if row["heading"] else ""
+        title = f"{index}. {row['law_title']}｜{article}{heading}｜版本 {row['version_no']}"
+        metadata = "hybrid={:.4f} · vector={:.4f} · lexical={:.4f}".format(
+            row["hybrid_score"], row["vector_score"], row["lexical_score"]
+        )
+        cards.append(
+            _evidence_card(
+                index=index,
+                title=title,
+                metadata=metadata,
+                content=row["content"],
+                source_url=row["source_url"],
+                anchor_prefix=anchor_prefix,
+                default_expanded=index == 1,
+            )
+        )
+    return "".join(cards)
 
 
 def build_response(query: str, hits: Iterable[Any]) -> dict[str, Any]:
@@ -125,7 +221,6 @@ def _render_response(
     local_results = response.get("results", [])
     web_results = response.get("web_results", [])
     evidence_count = len(local_results) + len(web_results)
-    requested_evidence = _requested_evidence(st)
     if response.get("answer"):
         if response.get("answer_status") == "ok":
             st.markdown(
@@ -154,35 +249,12 @@ def _render_response(
         st.caption("RAG 證據不足；web search 沒有找到允許清單內的官方來源。")
     if web_results:
         st.subheader("Web 補充來源")
-        for index, source in enumerate(web_results, start=len(local_results) + 1):
-            st.markdown(
-                evidence_anchor(index, anchor_prefix), unsafe_allow_html=True
-            )
-            with st.expander(
-                source["title"],
-                expanded=requested_evidence == (anchor_prefix, index),
-            ):
-                st.caption(f"擷取時間：{source['retrieved_at']}")
-                if source.get("content_preview"):
-                    st.text(source["content_preview"])
-                st.link_button("開啟官方來源", source["url"])
     st.markdown(response["summary"])
-    for index, row in enumerate(local_results, start=1):
-        st.markdown(evidence_anchor(index, anchor_prefix), unsafe_allow_html=True)
-        article = row["article_label"]
-        heading = f"｜{row['heading']}" if row["heading"] else ""
-        title = f"{index}. {row['law_title']}｜{article}{heading}｜版本 {row['version_no']}"
-        with st.expander(
-            title,
-            expanded=index == 1 or requested_evidence == (anchor_prefix, index),
-        ):
-            st.text(row["content"])
-            st.caption(
-                "hybrid={:.4f} · vector={:.4f} · lexical={:.4f}".format(
-                    row["hybrid_score"], row["vector_score"], row["lexical_score"]
-                )
-            )
-            st.link_button("開啟原始法規來源", row["source_url"])
+    if local_results or web_results:
+        st.markdown(
+            build_evidence_cards(local_results, web_results, anchor_prefix),
+            unsafe_allow_html=True,
+        )
 
 
 def _ensure_active_conversation(st: Any) -> tuple[int, list[Any]]:

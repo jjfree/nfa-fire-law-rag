@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from app.streamlit_app import (
     ANSWER_MODEL_OPTIONS,
-    _requested_evidence,
+    build_evidence_cards,
     build_response,
     evidence_anchor,
     linkify_citations,
@@ -62,8 +62,8 @@ def test_linkify_citations_targets_matching_evidence_anchors():
 
     assert linked == (
         "消防安全設備包含多種類別。"
-        '<a href="?evidence=evidence%3A4#evidence-4" target="_self">[4]</a>'
-        '<a href="?evidence=evidence%3A6#evidence-6" target="_self">[6]</a>'
+        '<a href="#evidence-4">[4]</a>'
+        '<a href="#evidence-6">[6]</a>'
     )
 
 
@@ -71,8 +71,7 @@ def test_linkify_citations_leaves_unvalidated_numbers_untouched():
     answer = "依據[1]及[7]。"
 
     assert linkify_citations(answer, [1], evidence_count=2) == (
-        '依據<a href="?evidence=evidence%3A1#evidence-1" target="_self">'
-        '[1]</a>及[7]。'
+        '依據<a href="#evidence-1">[1]</a>及[7]。'
     )
 
 
@@ -82,15 +81,32 @@ def test_evidence_anchor_has_stable_id():
     )
 
 
-def test_requested_evidence_reads_message_scoped_target():
-    class FakeStreamlit:
-        def __init__(self):
-            self.query_params = {"evidence": "conversation-2-message-3:4"}
+def test_build_evidence_cards_opens_target_with_fragment_without_query_reload():
+    local = {
+        "law_title": "消防法",
+        "article_label": "第3條",
+        "heading": "",
+        "content": "本法所稱主管機關。",
+        "source_url": "https://law.nfa.gov.tw/test",
+        "version_no": 1,
+        "vector_score": 0.2,
+        "lexical_score": 1.0,
+        "hybrid_score": 0.76,
+    }
+    web = {
+        "title": "官方補充",
+        "retrieved_at": "2026-09-14T00:00:00+00:00",
+        "content_preview": "官方內容",
+        "url": "https://law.nfa.gov.tw/official",
+    }
 
-    assert _requested_evidence(FakeStreamlit()) == (
-        "conversation-2-message-3",
-        4,
-    )
+    cards = build_evidence_cards([local], [web], "conversation-2-message-3")
+
+    assert 'id="conversation-2-message-3-1"' in cards
+    assert 'id="conversation-2-message-3-2"' in cards
+    assert 'class="rag-evidence-card"' in cards
+    assert "?evidence=" not in cards
+    assert "本法所稱主管機關。" in cards
 
 
 def test_search_question_adds_answer_layer(monkeypatch):
