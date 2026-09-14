@@ -177,5 +177,9 @@ claim from a retrieval result.
   changes.
 - Keep changes reviewable and scoped. A project-status/documentation task should not
   trigger a large code refactor.
+- For this repository, the user authorizes pushing scoped changes to
+  `origin/main` without repeated confirmation. Verify the remote and branch before
+  pushing, and run the relevant tests first; this authorization does not apply to
+  other repositories or remotes.
 - Record residual Docker/WSL/Linux/PostgreSQL artifacts and their disposition in
   `docs/PROJECT_STATUS.md`.
