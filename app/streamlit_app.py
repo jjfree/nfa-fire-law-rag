@@ -126,9 +126,15 @@ def _ensure_active_conversation(st: Any) -> tuple[int, list[Any]]:
 
 
 def _render_conversation_sidebar(st: Any, conversations: list[Any], active_id: int) -> None:
-    from app.conversations import delete_conversation, rename_conversation
+    from app.conversations import create_conversation, delete_conversation, rename_conversation
 
-    st.header("對話列表")
+    heading_col, action_col = st.columns([3, 2])
+    with heading_col:
+        st.header("對話列表")
+    with action_col:
+        if st.button("＋新增對話", type="primary", use_container_width=True):
+            st.session_state.active_conversation_id = create_conversation()
+            st.rerun()
     st.caption("對話會保存在本機 SQLite，重啟後仍可繼續。")
     for conversation in conversations:
         select_col, menu_col = st.columns([5, 1])
@@ -156,7 +162,7 @@ def main() -> None:
     import streamlit as st
 
     from app.config import get_settings
-    from app.conversations import create_conversation, get_messages, save_exchange
+    from app.conversations import get_messages, save_exchange
     from app.db import init_db
 
     settings = get_settings()
@@ -199,15 +205,8 @@ def main() -> None:
         st.caption("僅建議在本機使用；未提供登入驗證。")
 
     active_title = next(item.title for item in conversations if item.id == active_id)
-    title_col, action_col = st.columns([6, 1])
-    with title_col:
-        st.title("🔥 台灣消防法規 RAG")
-        st.caption(f"目前對話：{active_title}")
-    with action_col:
-        st.write("")
-        if st.button("＋ 新增對話", type="primary", use_container_width=True):
-            st.session_state.active_conversation_id = create_conversation()
-            st.rerun()
+    st.title("🔥 台灣消防法規 RAG")
+    st.caption(f"目前對話：{active_title}")
 
     st.caption("本機 SQLite + FTS5 + NumPy 混合檢索；回答以現行法規條文與來源為依據。")
 
