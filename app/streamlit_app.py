@@ -36,7 +36,10 @@ def linkify_citations(
             return match.group(0)
         anchor_id = f"{anchor_prefix}-{citation}"
         target = quote(f"{anchor_prefix}:{citation}", safe="")
-        return f'<a href="?evidence={target}#{anchor_id}">[{citation}]</a>'
+        return (
+            f'<a href="?evidence={target}#{anchor_id}" target="_self">'
+            f"[{citation}]</a>"
+        )
 
     return _CITATION_RE.sub(replace, safe_answer)
 

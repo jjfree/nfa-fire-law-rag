@@ -62,8 +62,8 @@ def test_linkify_citations_targets_matching_evidence_anchors():
 
     assert linked == (
         "消防安全設備包含多種類別。"
-        '<a href="?evidence=evidence%3A4#evidence-4">[4]</a>'
-        '<a href="?evidence=evidence%3A6#evidence-6">[6]</a>'
+        '<a href="?evidence=evidence%3A4#evidence-4" target="_self">[4]</a>'
+        '<a href="?evidence=evidence%3A6#evidence-6" target="_self">[6]</a>'
     )
 
 
@@ -71,7 +71,8 @@ def test_linkify_citations_leaves_unvalidated_numbers_untouched():
     answer = "依據[1]及[7]。"
 
     assert linkify_citations(answer, [1], evidence_count=2) == (
-        '依據<a href="?evidence=evidence%3A1#evidence-1">[1]</a>及[7]。'
+        '依據<a href="?evidence=evidence%3A1#evidence-1" target="_self">'
+        '[1]</a>及[7]。'
     )
 
 
