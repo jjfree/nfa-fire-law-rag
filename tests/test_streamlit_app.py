@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from app.streamlit_app import (
     ANSWER_MODEL_OPTIONS,
+    _requested_evidence,
     build_response,
     evidence_anchor,
     linkify_citations,
@@ -61,7 +62,8 @@ def test_linkify_citations_targets_matching_evidence_anchors():
 
     assert linked == (
         "消防安全設備包含多種類別。"
-        "[4](#evidence-4)[6](#evidence-6)"
+        '<a href="?evidence=evidence%3A4#evidence-4">[4]</a>'
+        '<a href="?evidence=evidence%3A6#evidence-6">[6]</a>'
     )
 
 
@@ -69,12 +71,25 @@ def test_linkify_citations_leaves_unvalidated_numbers_untouched():
     answer = "依據[1]及[7]。"
 
     assert linkify_citations(answer, [1], evidence_count=2) == (
-        "依據[1](#evidence-1)及[7]。"
+        '依據<a href="?evidence=evidence%3A1#evidence-1">[1]</a>及[7]。'
     )
 
 
 def test_evidence_anchor_has_stable_id():
-    assert evidence_anchor(4) == '<span id="evidence-4"></span>'
+    assert evidence_anchor(4, "conversation-2-message-3") == (
+        '<span id="conversation-2-message-3-4"></span>'
+    )
+
+
+def test_requested_evidence_reads_message_scoped_target():
+    class FakeStreamlit:
+        def __init__(self):
+            self.query_params = {"evidence": "conversation-2-message-3:4"}
+
+    assert _requested_evidence(FakeStreamlit()) == (
+        "conversation-2-message-3",
+        4,
+    )
 
 
 def test_search_question_adds_answer_layer(monkeypatch):

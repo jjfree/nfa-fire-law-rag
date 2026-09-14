@@ -8,36 +8,58 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
+from html import escape
 from typing import Any
+from urllib.parse import quote
 
 ANSWER_MODEL_OPTIONS = ("gemma4:e2b", "gemma4:e4b", "gemma4:31b-cloud")
 _CITATION_RE = re.compile(r"\[(\d+)\]")
 
 
 def linkify_citations(
-    answer: str, citations: Iterable[int], evidence_count: int
+    answer: str,
+    citations: Iterable[int],
+    evidence_count: int,
+    anchor_prefix: str = "evidence",
 ) -> str:
-    """Turn validated evidence numbers into links to their UI anchors."""
+    """Turn validated evidence numbers into safe links that open their expander."""
     valid_citations = {
         int(citation)
         for citation in citations
         if 1 <= int(citation) <= evidence_count
     }
+    safe_answer = escape(answer, quote=False)
 
     def replace(match: re.Match[str]) -> str:
         citation = int(match.group(1))
         if citation not in valid_citations:
             return match.group(0)
-        return f"[{citation}](#evidence-{citation})"
+        anchor_id = f"{anchor_prefix}-{citation}"
+        target = quote(f"{anchor_prefix}:{citation}", safe="")
+        return f'<a href="?evidence={target}#{anchor_id}">[{citation}]</a>'
 
-    return _CITATION_RE.sub(replace, answer)
+    return _CITATION_RE.sub(replace, safe_answer)
 
 
-def evidence_anchor(index: int) -> str:
-    """Return a stable, numeric-only anchor used by citation links."""
+def evidence_anchor(index: int, anchor_prefix: str = "evidence") -> str:
+    """Return a stable anchor used by citation links."""
     if index < 1:
         raise ValueError("evidence anchor index must be positive")
-    return f'<span id="evidence-{index}"></span>'
+    return f'<span id="{escape(anchor_prefix, quote=True)}-{index}"></span>'
+
+
+def _requested_evidence(st: Any) -> tuple[str, int] | None:
+    """Read the citation target that caused the current Streamlit rerun."""
+    query_params = getattr(st, "query_params", None)
+    raw_target = query_params.get("evidence") if query_params is not None else None
+    if not raw_target or ":" not in raw_target:
+        return None
+    anchor_prefix, raw_index = raw_target.rsplit(":", 1)
+    try:
+        index = int(raw_index)
+    except ValueError:
+        return None
+    return (anchor_prefix, index) if index > 0 else None
 
 
 def build_response(query: str, hits: Iterable[Any]) -> dict[str, Any]:
@@ -94,10 +116,13 @@ def _law_titles() -> list[str]:
         return list(db.scalars(select(Law.title).order_by(Law.title)).all())
 
 
-def _render_response(st: Any, response: dict[str, Any]) -> None:
+def _render_response(
+    st: Any, response: dict[str, Any], anchor_prefix: str = "evidence"
+) -> None:
     local_results = response.get("results", [])
     web_results = response.get("web_results", [])
     evidence_count = len(local_results) + len(web_results)
+    requested_evidence = _requested_evidence(st)
     if response.get("answer"):
         if response.get("answer_status") == "ok":
             st.markdown(
@@ -105,7 +130,9 @@ def _render_response(st: Any, response: dict[str, Any]) -> None:
                     response["answer"],
                     response.get("answer_citations", []),
                     evidence_count,
-                )
+                    anchor_prefix,
+                ),
+                unsafe_allow_html=True,
             )
         elif response.get("answer_status") == "llm_error":
             st.warning(response["answer"])
@@ -125,19 +152,27 @@ def _render_response(st: Any, response: dict[str, Any]) -> None:
     if web_results:
         st.subheader("Web 補充來源")
         for index, source in enumerate(web_results, start=len(local_results) + 1):
-            st.markdown(evidence_anchor(index), unsafe_allow_html=True)
-            with st.expander(source["title"], expanded=False):
+            st.markdown(
+                evidence_anchor(index, anchor_prefix), unsafe_allow_html=True
+            )
+            with st.expander(
+                source["title"],
+                expanded=requested_evidence == (anchor_prefix, index),
+            ):
                 st.caption(f"擷取時間：{source['retrieved_at']}")
                 if source.get("content_preview"):
                     st.text(source["content_preview"])
                 st.link_button("開啟官方來源", source["url"])
     st.markdown(response["summary"])
     for index, row in enumerate(local_results, start=1):
-        st.markdown(evidence_anchor(index), unsafe_allow_html=True)
+        st.markdown(evidence_anchor(index, anchor_prefix), unsafe_allow_html=True)
         article = row["article_label"]
         heading = f"｜{row['heading']}" if row["heading"] else ""
         title = f"{index}. {row['law_title']}｜{article}{heading}｜版本 {row['version_no']}"
-        with st.expander(title, expanded=index == 1):
+        with st.expander(
+            title,
+            expanded=index == 1 or requested_evidence == (anchor_prefix, index),
+        ):
             st.text(row["content"])
             st.caption(
                 "hybrid={:.4f} · vector={:.4f} · lexical={:.4f}".format(
@@ -249,14 +284,16 @@ def main() -> None:
 
     st.caption("本機 SQLite + FTS5 + NumPy 混合檢索；回答以現行法規條文與來源為依據。")
 
-    for message in get_messages(active_id):
+    messages = get_messages(active_id)
+    for message_index, message in enumerate(messages):
+        message_anchor_prefix = f"conversation-{active_id}-message-{message_index}"
         with st.chat_message(message.role):
             if message.role == "user":
                 st.write(message.content)
             elif message.response and message.response.get("error"):
                 st.error(message.response["error"])
             elif message.response:
-                _render_response(st, message.response)
+                _render_response(st, message.response, message_anchor_prefix)
             else:
                 st.write(message.content)
 
@@ -281,7 +318,8 @@ def main() -> None:
             save_exchange(active_id, query, error=error)
             st.error(error)
         else:
-            _render_response(st, response)
+            message_anchor_prefix = f"conversation-{active_id}-message-{len(messages) + 1}"
+            _render_response(st, response, message_anchor_prefix)
             save_exchange(active_id, query, response=response)
     st.rerun()
 

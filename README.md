@@ -188,8 +188,8 @@ curl --get 'http://localhost:8000/v1/ask' `
 等證據編號引用；若 Ollama 不可用或模型輸出沒有有效引用，系統會保留原文證據，
 不會把未驗證的生成文字當成答案。可在 `.env` 調整 `LLM_BASE_URL`、`LLM_MODEL`、
 `LLM_TIMEOUT_SECONDS`、`LLM_TEMPERATURE`、`LLM_THINK` 與 `LLM_MAX_OUTPUT_TOKENS`。
-Streamlit 前端會將已驗證的 `[N]` 引用轉成頁內連結，點擊後跳到對應的本機 RAG
-條文或 web 補充證據錨點；模型仍只需輸出原本的編號格式。
+Streamlit 前端會將已驗證的 `[N]` 引用轉成頁內連結，點擊後跳到並展開對應的本機
+RAG 條文或 web 補充證據；模型仍只需輸出原本的編號格式。
 Streamlit 側邊欄也可在每次查詢時選擇 `gemma4:e2b`（速度優先）或
 `gemma4:e4b`（品質優先），或 `gemma4:31b-cloud`（雲端品質優先）；此選擇不會改寫
 全域設定。選擇 `gemma4:31b-cloud` 時，不論本機 RAG 是否命中，都會使用該模型；
