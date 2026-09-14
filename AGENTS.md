@@ -227,3 +227,18 @@ Before a pull request or delivery, confirm:
 - Docker, WSL, or PostgreSQL have not accidentally become prerequisites for the SQLite default.
 - `docs/PROJECT_STATUS.md` reflects the current completion, risk, test, and residual entries.
 - The change description lists documents aligned and documents intentionally unaffected.
+
+The versioned PDF `output/pdf/nfa-fire-law-rag-system-manual.pdf` is a deliberate
+user-facing artifact, not disposable local data. `docs/SYSTEM_MANUAL.md` remains
+its single source of truth. When the manual changes, run the bundled-runtime
+command below, inspect every rendered page, and commit the Markdown, generator,
+and PDF together:
+
+```powershell
+$pdfPython = "C:\\Users\\james.chang\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe"
+& $pdfPython scripts\\build_system_manual_pdf.py
+```
+
+Do not hand-edit the PDF or update only the PDF. If the PDF layout changes,
+re-render it and verify that Chinese glyphs, tables, code blocks, page numbers,
+and section transitions remain readable before delivery.

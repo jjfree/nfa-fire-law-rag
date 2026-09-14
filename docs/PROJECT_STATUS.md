@@ -38,7 +38,7 @@ not required for the Windows SQLite target.
 | Tests | 10 test modules plus fixtures | 40 tests passing |
 | Evaluation | `eval/phase2_queries.json`, `app/evaluation.py`, CLI `eval` | Seed evaluation implemented; corpus-dependent |
 | Config | `app/config.py`, `.env.example`; local `.env` ignored | Implemented; secrets kept local |
-| Docs | `README.md`, `AGENTS.md`, and three `docs/` files | README, full system manual, and operational documentation are present |
+| Docs | `README.md`, `AGENTS.md`, three `docs/` files, and versioned system-manual PDF | README, full system manual, PDF deliverable, and operational documentation are present |
 | Windows launchers | `scripts/start_streamlit.bat` | Implemented; starts the local UI and opens the browser without crawling or installing |
 | Requirements files | No `requirements*.txt`/`.in`; dependencies in `pyproject.toml` | `pyproject.toml` is the source of truth |
 | Data | Ignored local `data/nfa_fire_law.db` (~98 MB) and `data/test.txt` | Local/generated; not commit candidates |
@@ -183,6 +183,10 @@ check, and a pytest cache permission warning. They did not fail tests.
 - `docs/PROJECT_STATUS.md` — this evidence-backed inventory and completion report.
 - `docs/SYSTEM_MANUAL.md` — system architecture, crawler design, installation/startup,
   Streamlit usage, and documentation alignment rules.
+- `scripts/build_system_manual_pdf.py` — reproducible offline PDF builder using the
+  Markdown manual as the source of truth.
+- `output/pdf/nfa-fire-law-rag-system-manual.pdf` — versioned, rendered system-manual
+  PDF for printing and sharing.
 - `docs/MIGRATION_PLAN_SQLITE_HYBRID_RAG.md` — Phase 0–10 staged migration plan.
 - `app/answer.py` — local/cloud Ollama Gemma answer generation with evidence validation.
 - `app/rerank.py` — conditional answer-evidence reranking for comparison/scope questions,
