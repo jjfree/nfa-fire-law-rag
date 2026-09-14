@@ -6,10 +6,38 @@ not require the optional UI dependency.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from typing import Any
 
 ANSWER_MODEL_OPTIONS = ("gemma4:e2b", "gemma4:e4b", "gemma4:31b-cloud")
+_CITATION_RE = re.compile(r"\[(\d+)\]")
+
+
+def linkify_citations(
+    answer: str, citations: Iterable[int], evidence_count: int
+) -> str:
+    """Turn validated evidence numbers into links to their UI anchors."""
+    valid_citations = {
+        int(citation)
+        for citation in citations
+        if 1 <= int(citation) <= evidence_count
+    }
+
+    def replace(match: re.Match[str]) -> str:
+        citation = int(match.group(1))
+        if citation not in valid_citations:
+            return match.group(0)
+        return f"[{citation}](#evidence-{citation})"
+
+    return _CITATION_RE.sub(replace, answer)
+
+
+def evidence_anchor(index: int) -> str:
+    """Return a stable, numeric-only anchor used by citation links."""
+    if index < 1:
+        raise ValueError("evidence anchor index must be positive")
+    return f'<span id="evidence-{index}"></span>'
 
 
 def build_response(query: str, hits: Iterable[Any]) -> dict[str, Any]:
@@ -67,9 +95,18 @@ def _law_titles() -> list[str]:
 
 
 def _render_response(st: Any, response: dict[str, Any]) -> None:
+    local_results = response.get("results", [])
+    web_results = response.get("web_results", [])
+    evidence_count = len(local_results) + len(web_results)
     if response.get("answer"):
         if response.get("answer_status") == "ok":
-            st.markdown(response["answer"])
+            st.markdown(
+                linkify_citations(
+                    response["answer"],
+                    response.get("answer_citations", []),
+                    evidence_count,
+                )
+            )
         elif response.get("answer_status") == "llm_error":
             st.warning(response["answer"])
             if response.get("answer_error"):
@@ -85,16 +122,18 @@ def _render_response(st: Any, response: dict[str, Any]) -> None:
         st.caption("RAG 證據不足；web fallback 暫時無法連線，以下仍顯示本機結果。")
     elif web_status == "no_results":
         st.caption("RAG 證據不足；web search 沒有找到允許清單內的官方來源。")
-    if response.get("web_results"):
+    if web_results:
         st.subheader("Web 補充來源")
-        for source in response["web_results"]:
+        for index, source in enumerate(web_results, start=len(local_results) + 1):
+            st.markdown(evidence_anchor(index), unsafe_allow_html=True)
             with st.expander(source["title"], expanded=False):
                 st.caption(f"擷取時間：{source['retrieved_at']}")
                 if source.get("content_preview"):
                     st.text(source["content_preview"])
                 st.link_button("開啟官方來源", source["url"])
     st.markdown(response["summary"])
-    for index, row in enumerate(response["results"], start=1):
+    for index, row in enumerate(local_results, start=1):
+        st.markdown(evidence_anchor(index), unsafe_allow_html=True)
         article = row["article_label"]
         heading = f"｜{row['heading']}" if row["heading"] else ""
         title = f"{index}. {row['law_title']}｜{article}{heading}｜版本 {row['version_no']}"

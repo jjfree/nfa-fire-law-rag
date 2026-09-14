@@ -1,6 +1,11 @@
 from dataclasses import dataclass
 
-from app.streamlit_app import ANSWER_MODEL_OPTIONS, build_response
+from app.streamlit_app import (
+    ANSWER_MODEL_OPTIONS,
+    build_response,
+    evidence_anchor,
+    linkify_citations,
+)
 
 
 @dataclass
@@ -47,6 +52,29 @@ def test_build_response_handles_empty_retrieval():
     assert response["results"] == []
     assert "沒有找到" in response["summary"]
     assert "gemma4:31b-cloud" in ANSWER_MODEL_OPTIONS
+
+
+def test_linkify_citations_targets_matching_evidence_anchors():
+    answer = "消防安全設備包含多種類別。[4][6]"
+
+    linked = linkify_citations(answer, [4, 6], evidence_count=6)
+
+    assert linked == (
+        "消防安全設備包含多種類別。"
+        "[4](#evidence-4)[6](#evidence-6)"
+    )
+
+
+def test_linkify_citations_leaves_unvalidated_numbers_untouched():
+    answer = "依據[1]及[7]。"
+
+    assert linkify_citations(answer, [1], evidence_count=2) == (
+        "依據[1](#evidence-1)及[7]。"
+    )
+
+
+def test_evidence_anchor_has_stable_id():
+    assert evidence_anchor(4) == '<span id="evidence-4"></span>'
 
 
 def test_search_question_adds_answer_layer(monkeypatch):

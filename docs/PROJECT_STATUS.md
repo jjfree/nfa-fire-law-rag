@@ -87,7 +87,8 @@ future capability, **可沿用** means keep as the current extension point, and
   use a lower provider-specific vector weight; exact article lookup is also present.
 - FastAPI health/search/article/law/version/admin endpoints and MCP tools exist.
 - A local Streamlit UI supports natural-language queries, law filtering, result
-  counts, current-version evidence, scores, and source links without an API key.
+  counts, current-version evidence, scores, source links, and clickable answer
+  citations that jump to stable evidence anchors without an API key.
 - `scripts/start_streamlit.bat` checks the repository `.venv`, starts Streamlit on
   loopback, and opens the local Q&A page automatically.
 - Offline fixtures cover crawler discovery, URL identity, fetch behavior, parsing,
