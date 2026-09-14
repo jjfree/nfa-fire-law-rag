@@ -2,6 +2,8 @@
 
 可執行的「內政部消防署消防預防調查法令」知識庫（目前 Phase 2 / v0.2）：
 
+完整的系統架構、爬取設計、安裝啟動與 Streamlit 操作，請參閱 [`docs/SYSTEM_MANUAL.md`](docs/SYSTEM_MANUAL.md)；文件對齊規範則見 [`AGENTS.md`](AGENTS.md)。本 README 保留快速啟動與開發者入口。
+
 `crawler → 法規條文解析 → SQLite + FTS5 + NumPy → Hybrid Search → Ollama/Gemma answer layer → FastAPI → MCP`
 
 預設來源：

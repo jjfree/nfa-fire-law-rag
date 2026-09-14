@@ -183,3 +183,47 @@ claim from a retrieval result.
   other repositories or remotes.
 - Record residual Docker/WSL/Linux/PostgreSQL artifacts and their disposition in
   `docs/PROJECT_STATUS.md`.
+
+## 17. Documentation alignment requirements
+
+Documentation changes are driven by impact. A change that affects user operation,
+data contracts, source rules, execution commands, security boundaries, or
+validation must align the affected documents in the same change. A pure internal
+refactor that does not change observable behavior does not require a full manual
+rewrite, but it must preserve tests and document any changed implementation
+contract.
+
+The document responsibilities are:
+
+| Document | Role | Update when |
+|---|---|---|
+| `docs/SYSTEM_MANUAL.md` | User/operator manual for architecture, crawler design, installation, startup, UI, and operations | Behavior, operation, architecture, configuration, data model, or security boundary changes |
+| `README.md` | Short project entry point and quick start | Initial setup, main entrypoint, required commands, or supported scope changes |
+| `AGENTS.md` | Developer and agent working contract | Platform, data safety, testing, Git, architecture, or maintenance rules change |
+| `docs/PROJECT_STATUS.md` | Evidence-backed status, risks, test baseline, and residual disposition | Feature status, test baseline, documentation inventory, or residual disposition changes |
+| `docs/MIGRATION_PLAN_SQLITE_HYBRID_RAG.md` | Staged roadmap and unfinished work | Milestones, priorities, or architecture decisions change |
+| `.env.example` | Copyable configuration contract | A setting is added, removed, renamed, or its default changes |
+| `pyproject.toml` | Python version, dependencies, extras, and entrypoints source of truth | Dependency, optional extra, entrypoint, or supported-version changes |
+
+Use this alignment matrix before delivery:
+
+| Change type | Required alignment | Suggested validation |
+|---|---|---|
+| Crawler URL, selector, pacing, or attachment policy | System manual crawler/troubleshooting sections; `.env.example`; README crawl instructions | Crawler/parser/attachment fixtures and a small live probe |
+| Schema, versioning, FTS5, or embedding | System manual data/retrieval sections; migration plan; project status | SQLite/FTS5/ingestion/version tests; never use the real database for destructive test setup |
+| Search, rerank, answer, or citation behavior | System manual retrieval/UI sections; README embedding/answer notes | Search/answer/rerank/web tests; inspect provenance and citations |
+| FastAPI or MCP contract | System manual API/MCP section; README API/MCP notes | API/MCP smoke tests and updated tool/field inventory |
+| Streamlit UI or launcher | System manual startup/UI sections; README UI notes; project status inventory | UI/launcher tests; verify loopback binding and persistence |
+| Configuration, dependency, or installation workflow | System manual installation/configuration sections; `.env.example`; `pyproject.toml`; README | Run commands with the repository-local `.venv` |
+| Security, public deployment, or data-use policy | System manual boundary/security sections; this contract; README warnings | Check host allowlist, TLS, authentication, and that secrets are not in Git |
+
+Before a pull request or delivery, confirm:
+
+- User commands, URLs, UI behavior, API/MCP fields, configuration keys, and defaults are documented when changed.
+- Law identity, current-version behavior, chunk structure, FTS5, embedding dimensions, and provenance remain documented and tested when changed.
+- New network, credential, host, attachment, retry, or public-service behavior is reflected in the security and crawler documentation.
+- `.venv\\Scripts\\python.exe -m pytest -q` passes.
+- Windows-local `.venv` commands remain the primary supported examples.
+- Docker, WSL, or PostgreSQL have not accidentally become prerequisites for the SQLite default.
+- `docs/PROJECT_STATUS.md` reflects the current completion, risk, test, and residual entries.
+- The change description lists documents aligned and documents intentionally unaffected.

@@ -1,6 +1,6 @@
 # Project Status — nfa-fire-law-rag
 
-Date: 2026-09-11
+Date: 2026-09-14
 Repository: `C:\Users\james.chang\source\nfa-fire-law-rag`
 Branch: `main` at `origin/main`; the tracked baseline is clean before this launcher change.
 
@@ -38,7 +38,7 @@ not required for the Windows SQLite target.
 | Tests | 10 test modules plus fixtures | 40 tests passing |
 | Evaluation | `eval/phase2_queries.json`, `app/evaluation.py`, CLI `eval` | Seed evaluation implemented; corpus-dependent |
 | Config | `app/config.py`, `.env.example`; local `.env` ignored | Implemented; secrets kept local |
-| Docs | `README.md`, `AGENTS.md`, and two `docs/` files | README and operational documentation are present |
+| Docs | `README.md`, `AGENTS.md`, and three `docs/` files | README, full system manual, and operational documentation are present |
 | Windows launchers | `scripts/start_streamlit.bat` | Implemented; starts the local UI and opens the browser without crawling or installing |
 | Requirements files | No `requirements*.txt`/`.in`; dependencies in `pyproject.toml` | `pyproject.toml` is the source of truth |
 | Data | Ignored local `data/nfa_fire_law.db` (~98 MB) and `data/test.txt` | Local/generated; not commit candidates |
@@ -177,9 +177,12 @@ check, and a pytest cache permission warning. They did not fail tests.
 ## Files changed in this phase
 
 - `AGENTS.md` — new repository working contract with 16 policy categories.
-- `README.md` — corrected the documented 2-second throttle and made Windows-safe,
-  non-destructive setup/re-embedding guidance primary.
+- `README.md` — corrected the documented 2-second throttle, made Windows-safe,
+  non-destructive setup/re-embedding guidance primary, and linked the full system
+  manual.
 - `docs/PROJECT_STATUS.md` — this evidence-backed inventory and completion report.
+- `docs/SYSTEM_MANUAL.md` — system architecture, crawler design, installation/startup,
+  Streamlit usage, and documentation alignment rules.
 - `docs/MIGRATION_PLAN_SQLITE_HYBRID_RAG.md` — Phase 0–10 staged migration plan.
 - `app/answer.py` — local/cloud Ollama Gemma answer generation with evidence validation.
 - `app/rerank.py` — conditional answer-evidence reranking for comparison/scope questions,
@@ -225,3 +228,24 @@ controls are reviewed. Likely files include:
 
 Do not begin with a full crawl, PostgreSQL migration, Docker setup, or broad schema
 rewrite. Preserve the current passing test baseline first.
+
+## Documentation governance
+
+`docs/SYSTEM_MANUAL.md` is now the user-facing and operator-facing source for the
+architecture, crawler design, installation/startup, and Streamlit usage. Its
+maintenance section points to the normative documentation-alignment rules in
+`AGENTS.md`. `README.md` remains the short entry point; this file remains the
+evidence-backed status snapshot; and `docs/MIGRATION_PLAN_SQLITE_HYBRID_RAG.md`
+remains the staged roadmap.
+
+Future changes that affect behavior, commands, configuration, data contracts,
+provenance, security boundaries, or validation must follow the alignment matrix
+in `AGENTS.md` and update the affected documents in the same change. Pure
+refactors that do not alter observable behavior do not require a full manual
+rewrite, but must still preserve tests and document any changed implementation
+contract.
+
+The minimum delivery check is `.venv\\Scripts\\python.exe -m pytest -q`, together
+with a review of the manual's installation commands and the relevant
+`PROJECT_STATUS` completion/risk entries. The `AGENTS.md` checklist also requires
+explicitly recording which documents were aligned and which were not affected.
