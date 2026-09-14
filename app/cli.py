@@ -3,7 +3,8 @@ from pathlib import Path
 
 import typer
 
-from app.ingest import crawl_category, probe_category
+from app.crawler.categories import category_urls_for_codes
+from app.ingest import crawl_categories, crawl_category, probe_category
 
 app = typer.Typer(help="NFA Fire Law RAG management CLI")
 
@@ -46,9 +47,19 @@ def probe_command(max_laws: int = typer.Option(default=3, min=1, max=50)):
 
 
 @app.command("crawl")
-def crawl_command(max_laws: int | None = typer.Option(default=None, min=1)):
-    """Crawl the configured NFA category and ingest changed laws."""
-    result = crawl_category(max_laws=max_laws)
+def crawl_command(
+    max_laws: int | None = typer.Option(default=None, min=1),
+    categories: str | None = typer.Option(
+        default=None,
+        help="Comma-separated supported NFA category codes, for example A001,A002,A003.",
+    ),
+):
+    """Crawl one or more NFA categories and ingest changed laws."""
+    if categories:
+        category_urls = category_urls_for_codes(categories.split(","))
+        result = crawl_categories(category_urls, max_laws=max_laws)
+    else:
+        result = crawl_category(max_laws=max_laws)
     typer.echo(json.dumps(result, ensure_ascii=False, indent=2, default=str))
 
 

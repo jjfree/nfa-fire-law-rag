@@ -7,18 +7,19 @@
 預設來源：
 
 - `https://law.nfa.gov.tw/MOBILE/category.aspx?typecode=A002`
+- 可用多分類增量同步：`A001` 通用法令、`A002` 預防調查、`A003` 危險物品管理
 
 > 注意：Phase 2 開發環境仍無法直接解析 `law.nfa.gov.tw` DNS。此版已依目前公開索引可確認的 NFA legacy URL/列印頁格式校正 `LSID` identity、print view 與 parser，並新增不需 DB 的 live probe。第一次在可連線環境執行時，先跑 `python -m app.cli probe --max-laws 3`，再進行完整 ingest。
 
 ## 特色
 
-- A002 分類頁自動探索法規連結，不預先寫死法規清單。
+- A001/A002/A003 分類頁自動探索法規連結，不預先寫死法規清單。
 - Phase 2：以 `LSID` 作為穩定法規 identity，忽略 `LSID/lsid` 大小寫與不同 `ldate`，避免同一法規重複入庫。
 - Phase 2：對有 `LSID` 的法規優先抓 `GNFA/FLAW/PrintFLAWDAT02.aspx` 完整列印版，失敗再 fallback 原始 detail URL。
 - 尊重網站：單執行緒、預設 2 秒節流、timeout/retry、固定 User-Agent。
 - 依 `第X條` / `一、二、...` 法規結構切 chunk，不用一般固定 token 粗切。
 - Semantic `SHA-256` 內容指紋：只雜湊穩定法規內容，排除「列印時間／頁尾」等動態 chrome；未變更法規不重做 embedding，變更時保留舊版本。
-- 法規 detail page 的同網域 PDF/下載附件會嘗試抽取文字，作為 `附件：檔名` chunks 一併存入與查詢；掃描型或失敗附件會記錄在 version metadata，不中斷整批 crawl。
+- 法規 detail page 的同網域 PDF/下載附件會嘗試抽取文字，包含 A003 常見的「附件清單頁 → 實際 PDF」一層連結，作為 `附件：檔名` chunks 一併存入與查詢；掃描型或失敗附件會記錄在 version metadata，不中斷整批 crawl。
 - SQLite default：單一 `data/nfa_fire_law.db` 檔案，不需要 Docker、WSL、資料庫服務或管理員權限。
 - FTS5 lexical retrieval + NumPy cosine vector retrieval，先以 FTS5 篩選候選，再融合 hybrid score。
 - PostgreSQL + `pgvector` + `pg_trgm` 保留為可選 backend，不影響 SQLite 預設流程。
@@ -71,6 +72,14 @@ python -m app.cli crawl --max-laws 3
 ```bash
 python -m app.cli crawl
 ```
+
+要一次增量同步 A001、A002 與 A003：
+
+```powershell
+.venv\Scripts\python.exe -m app.cli crawl --categories A001,A002,A003
+```
+
+此命令仍依 `LSID`、版本與 content hash 判斷 unchanged；不變更既有版本，變更才新增 current version、chunks、FTS5 索引與 embedding。專案內的 `.codex/skills/nfa-incremental-crawl/SKILL.md` 也已將「請增量爬取A001/A002/A003」對應到此流程。
 
 完整 crawl 遇到 HTTP 403/429 會立即停止，不會持續重試；若網路政策更嚴格，可在 `.env` 增加 `CRAWL_DELAY_SECONDS`，例如 `5.0`。附件採串流下載，預設受 `MAX_ATTACHMENT_BYTES=25000000`（25 MB）與 `MAX_ATTACHMENT_PAGES=200` 限制；超過大小、頁數、沒有可搜尋文字或非 PDF 的檔案會記錄在回報的 `metadata.attachments.skipped`（含 URL 與原因），不會耗盡本機記憶體。不要用併發方式加速，也不要關閉 TLS 憑證驗證。
 

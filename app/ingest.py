@@ -88,7 +88,7 @@ def parse_link_without_db(link: DiscoveredLawLink, fetcher: HttpFetcher) -> dict
 def _ingest_attachments(
     parsed, page: FetchedPage, link: DiscoveredLawLink, fetcher: HttpFetcher
 ) -> dict:
-    """Download same-host PDFs linked by the detail page and append searchable text."""
+    """Download same-host PDFs, including one intermediate attachment-list page."""
     settings = get_settings()
     attachment_page = page
     if page.url != link.url:
@@ -103,7 +103,12 @@ def _ingest_attachments(
         attachment_page.text, attachment_page.url, settings.nfa_allowed_host
     )
     report = {"discovered": len(urls), "parsed": 0, "skipped": [], "errors": []}
-    for url in urls:
+    seen_urls: set[str] = set()
+
+    def process_url(url: str, depth: int = 0) -> None:
+        if url in seen_urls:
+            return
+        seen_urls.add(url)
         try:
             content_type, content = fetcher.fetch_bytes(url)
             is_pdf = (
@@ -112,16 +117,30 @@ def _ingest_attachments(
                 or content.startswith(b"%PDF-")
             )
             if not is_pdf:
+                # NFA attachment indicators point first to lawfile_list.aspx;
+                # that page then exposes GetFile.ashx PDF links. Expand only
+                # one same-host HTML hop so arbitrary pages cannot become a
+                # crawl graph.
+                if depth == 0 and "html" in content_type.lower():
+                    nested_urls = discover_attachment_urls(
+                        content.decode("utf-8", errors="replace"), url, settings.nfa_allowed_host
+                    )
+                    nested_urls = [nested for nested in nested_urls if nested not in seen_urls]
+                    if nested_urls:
+                        report["discovered"] += len(nested_urls)
+                        for nested_url in nested_urls:
+                            process_url(nested_url, depth + 1)
+                        return
                 reason = "unsupported content (not detected as PDF)"
                 report["skipped"].append({"url": url, "reason": reason})
                 report["errors"].append(f"{reason}: {url}")
-                continue
+                return
             text = extract_pdf_text(content, max_pages=settings.max_attachment_pages)
             if len(text) < 20:
                 reason = "PDF has no searchable text"
                 report["skipped"].append({"url": url, "reason": reason})
                 report["errors"].append(f"{reason}: {url}")
-                continue
+                return
             label = PurePosixPath(urlparse(url).path).name or url
             append_attachment_text(parsed, text, label)
             report["parsed"] += 1
@@ -133,10 +152,17 @@ def _ingest_attachments(
             raise
         except Exception as exc:  # noqa: BLE001 - one bad attachment must not stop the law
             report["errors"].append(f"{url}: {type(exc).__name__}: {exc}")
+
+    for url in urls:
+        process_url(url)
     return report
 
 
-def ingest_link(link: DiscoveredLawLink, fetcher: HttpFetcher | None = None) -> dict:
+def ingest_link(
+    link: DiscoveredLawLink,
+    fetcher: HttpFetcher | None = None,
+    category_url: str | None = None,
+) -> dict:
     # Keep DB/vector dependencies lazy so `nfa-law probe` can run on a fresh
     # machine before PostgreSQL drivers are installed/configured.
     from sqlalchemy import select
@@ -157,6 +183,8 @@ def ingest_link(link: DiscoveredLawLink, fetcher: HttpFetcher | None = None) -> 
             raise IngestError(f"No legal chunks detected: {link.url}")
 
         parsed.metadata.setdefault("retrieved_url", page.url)
+        if category_url:
+            parsed.metadata.setdefault("category_url", category_url)
         lsid = extract_lsid(link.url)
         if lsid:
             parsed.metadata.setdefault("lsid", lsid)
@@ -309,6 +337,37 @@ def _discover_category(
     return category, links
 
 
+def _crawl_one_category(
+    category_url: str, fetcher: HttpFetcher, max_laws: int | None = None
+) -> dict:
+    category, all_links = _discover_category(category_url, fetcher)
+    links = all_links[:max_laws] if max_laws is not None else all_links
+    results = []
+    for link in links:
+        try:
+            results.append(
+                {
+                    "link": asdict(link),
+                    "result": ingest_link(link, fetcher, category_url=category.url),
+                }
+            )
+        except CrawlBlockedError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - report one-law failures and continue
+            results.append({"link": asdict(link), "error": f"{type(exc).__name__}: {exc}"})
+    return {
+        "category_url": category.url,
+        "discovered_total": len(all_links),
+        "selected": len(links),
+        "inserted": sum(1 for r in results if r.get("result", {}).get("status") == "inserted"),
+        "unchanged": sum(
+            1 for r in results if r.get("result", {}).get("status") == "unchanged"
+        ),
+        "errors": sum(1 for r in results if "error" in r),
+        "results": results,
+    }
+
+
 def probe_category(category_url: str | None = None, max_laws: int = 3) -> dict:
     """Network/parser smoke test that does not require PostgreSQL or embeddings."""
     settings = get_settings()
@@ -338,24 +397,24 @@ def crawl_category(category_url: str | None = None, max_laws: int | None = None)
     settings = get_settings()
     category_url = category_url or settings.nfa_category_url
     with HttpFetcher() as fetcher:
-        category, all_links = _discover_category(category_url, fetcher)
-        links = all_links[:max_laws] if max_laws is not None else all_links
-        results = []
-        for link in links:
-            try:
-                results.append({"link": asdict(link), "result": ingest_link(link, fetcher)})
-            except CrawlBlockedError:
-                raise
-            except Exception as exc:  # noqa: BLE001 - report one-law failures and continue
-                results.append({"link": asdict(link), "error": f"{type(exc).__name__}: {exc}"})
-        return {
-            "category_url": category.url,
-            "discovered_total": len(all_links),
-            "selected": len(links),
-            "inserted": sum(1 for r in results if r.get("result", {}).get("status") == "inserted"),
-            "unchanged": sum(
-                1 for r in results if r.get("result", {}).get("status") == "unchanged"
-            ),
-            "errors": sum(1 for r in results if "error" in r),
-            "results": results,
-        }
+        return _crawl_one_category(category_url, fetcher, max_laws=max_laws)
+
+
+def crawl_categories(category_urls: list[str], max_laws: int | None = None) -> dict:
+    """Incrementally ingest several category pages with one bounded fetcher."""
+    if not category_urls:
+        raise ValueError("At least one category URL is required")
+    with HttpFetcher() as fetcher:
+        categories = [
+            _crawl_one_category(category_url, fetcher, max_laws=max_laws)
+            for category_url in category_urls
+        ]
+    return {
+        "category_urls": [item["category_url"] for item in categories],
+        "categories": categories,
+        "discovered_total": sum(item["discovered_total"] for item in categories),
+        "selected": sum(item["selected"] for item in categories),
+        "inserted": sum(item["inserted"] for item in categories),
+        "unchanged": sum(item["unchanged"] for item in categories),
+        "errors": sum(item["errors"] for item in categories),
+    }

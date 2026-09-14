@@ -77,3 +77,48 @@ def test_attachment_report_lists_skipped_files(monkeypatch):
             "reason": "PDF has more than 200 pages",
         }
     ]
+
+
+def test_attachment_list_page_is_expanded_to_pdf(monkeypatch):
+    class FakeFetcher:
+        def fetch(self, url):
+            assert url.endswith("lawfile_list.aspx?lsid=FL093845&no=3")
+            return FetchedPage(
+                url=url,
+                text='<a href="GetFile.ashx?pfid=0000400239">表一.PDF</a>',
+                content_type="text/html",
+                status_code=200,
+            )
+
+        def fetch_bytes(self, url):
+            if "lawfile_list.aspx" in url:
+                return "text/html", b'<a href="GetFile.ashx?pfid=0000400239">table.PDF</a>'
+            return "application/pdf", b"pdf"
+
+    extracted = []
+    monkeypatch.setattr(
+        "app.ingest.extract_pdf_text", lambda content, max_pages: "attachment text with enough content"
+    )
+    monkeypatch.setattr(
+        "app.ingest.append_attachment_text",
+        lambda parsed, text, label: extracted.append((text, label)),
+    )
+    parsed = ParsedLaw(title="危險物品法規", text="第1條 原本文字", metadata={}, content_hash="old", chunks=[])
+    page = FetchedPage(
+        url="https://law.nfa.gov.tw/MOBILE/law.aspx?LSID=FL093845",
+        text='<a href="lawfile_list.aspx?lsid=FL093845&no=3">下載附件圖表</a>',
+        content_type="text/html",
+        status_code=200,
+    )
+    link = DiscoveredLawLink(
+        title="液化石油氣容器定期檢驗標準",
+        url=page.url,
+        source_key="nfa:lsid:FL093845",
+    )
+
+    report = _ingest_attachments(parsed, page, link, FakeFetcher())
+
+    assert report["discovered"] == 2
+    assert report["parsed"] == 1
+    assert report["skipped"] == []
+    assert extracted == [("attachment text with enough content", "GetFile.ashx")]
