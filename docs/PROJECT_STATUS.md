@@ -164,7 +164,8 @@ no live crawl was run.
 | temporary FTS5 table/query | Passed; one inserted Chinese legal row was found |
 | NumPy | 2.5.3; float32 array and norm calculation passed |
 | Streamlit UI dependency | `1.63.0` installed in repository `.venv` |
-| repository tests | `26 passed, 4 warnings` |
+| Ollama hosted web-search key | Configured only in ignored local `.env`; live cloud/web request was not run |
+| repository tests | `45 passed, 9 warnings` after the cited-answer, web-fallback, and cloud-model additions |
 
 The warnings were existing dependency/runtime warnings: `datetime.utcnow()` deprecation
 from SQLAlchemy-related defaults, the deprecated `sqlite3.version` read used for this
@@ -177,16 +178,18 @@ check, and a pytest cache permission warning. They did not fail tests.
   non-destructive setup/re-embedding guidance primary.
 - `docs/PROJECT_STATUS.md` — this evidence-backed inventory and completion report.
 - `docs/MIGRATION_PLAN_SQLITE_HYBRID_RAG.md` — Phase 0–10 staged migration plan.
-- `app/answer.py` — local Ollama/Gemma answer generation with evidence validation.
+- `app/answer.py` — local/cloud Ollama Gemma answer generation with evidence validation.
+- `app/web_search.py` — bounded Ollama hosted web-search/fetch fallback with HTTPS
+  official-domain allowlisting and timestamped provenance.
 - `app/config.py`, `.env.example` — local LLM endpoint, model, thinking, timeout,
-  temperature, and output-limit settings.
+  temperature, output-limit, and optional web-fallback settings.
 - `app/api.py`, `app/mcp_server.py`, `app/streamlit_app.py`, `app/conversations.py` —
   cited-answer wiring plus persisted local conversation history while preserving raw
   search and evidence display.
 - `app/models.py` — adds `conversations` and `conversation_messages` tables; SQLite
   `create_all` adds them automatically to an existing local database.
-- `tests/test_answer.py`, `tests/test_streamlit_app.py` — offline answer-layer and
-  UI integration tests.
+- `tests/test_answer.py`, `tests/test_web_search.py`, `tests/test_streamlit_app.py` —
+  offline answer-layer, web-fallback, and UI integration tests.
 - `scripts/start_streamlit.bat` — Windows launcher that stops only the repository's
   prior Streamlit process on the configured local port, waits for the health endpoint,
   and then opens the local Q&A URL.

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from app.streamlit_app import build_response
+from app.streamlit_app import ANSWER_MODEL_OPTIONS, build_response
 
 
 @dataclass
@@ -46,6 +46,7 @@ def test_build_response_handles_empty_retrieval():
 
     assert response["results"] == []
     assert "沒有找到" in response["summary"]
+    assert "gemma4:31b-cloud" in ANSWER_MODEL_OPTIONS
 
 
 def test_search_question_adds_answer_layer(monkeypatch):

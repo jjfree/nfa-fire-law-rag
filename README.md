@@ -164,7 +164,8 @@ $env:DATABASE_URL = "sqlite:///./data/nfa_fire_law_openai.db"
 
 ### 本機 Gemma 問答
 
-若已安裝 Ollama 與 Gemma 4（預設模型為 `gemma4:e4b`），先確認服務正在執行：
+預設回答模型為 `gemma4:31b-cloud`。請先在 `.env` 設定 `OLLAMA_API_KEY`；Ollama
+cloud model 不需要下載 31B 權重，並需有 Ollama 帳號登入。若要使用本機模型，仍可：
 
 ```powershell
 ollama pull gemma4:e2b
@@ -184,7 +185,18 @@ curl --get 'http://localhost:8000/v1/ask' `
 不會把未驗證的生成文字當成答案。可在 `.env` 調整 `LLM_BASE_URL`、`LLM_MODEL`、
 `LLM_TIMEOUT_SECONDS`、`LLM_TEMPERATURE`、`LLM_THINK` 與 `LLM_MAX_OUTPUT_TOKENS`。
 Streamlit 側邊欄也可在每次查詢時選擇 `gemma4:e2b`（速度優先）或
-`gemma4:e4b`（品質優先）；此選擇不會改寫全域設定。
+`gemma4:e4b`（品質優先），或 `gemma4:31b-cloud`（雲端品質優先）；此選擇不會改寫
+全域設定。選擇 `gemma4:31b-cloud` 時，不論本機 RAG 是否命中，都會使用該模型；
+無命中時會先嘗試取得 web 補充資料。
+
+當本機 RAG 沒有結果或最高 hybrid 分數低於 `WEB_SEARCH_MIN_HYBRID_SCORE` 時，
+系統可使用 Ollama hosted web search 作為補充，再由本機 Gemma 彙整回答。搜尋結果
+只接受 `.env` 中 `WEB_SEARCH_ALLOWED_DOMAINS` 指定的 HTTPS 官方網域，回答 API 會在
+`web_results` 回傳標題、來源連結、擷取時間與內容摘要。啟用此功能前，請在本機
+`.env` 設定 `OLLAMA_API_KEY`；此 key 同時用於 `gemma4:31b-cloud` 與 web fallback。
+未設定時仍可正常使用本機 RAG/LLM，但 cloud/web 功能
+會回報 `web_search_status=unavailable`。`/v1/ask` 的 `web_search_status` 也會明確標示
+本次是否使用、停用或無法使用 web fallback。
 
 ## 5. 本機瀏覽器問答介面（Streamlit）
 
@@ -206,7 +218,8 @@ Streamlit 是否可用，啟動本機服務後自動開啟 `http://127.0.0.1:850
 
 開啟 `http://127.0.0.1:8501` 後，可輸入自然語言問題、選擇法規篩選與結果數。
 介面顯示現行版本的條文內容、條號、版本、檢索分數與原始來源 URL；預設不需要
-OpenAI API key，也不會把檢索不到的內容編造成法律結論。這是本機只讀查詢介面，
+OpenAI API key，也不會把檢索不到的內容編造成法律結論。若已設定 `OLLAMA_API_KEY`，
+證據不足時也會顯示允許清單內的官方 web 補充來源。這是本機只讀查詢介面，
 尚未加入登入驗證或遠端部署能力。
 
 ## 6. MCP
@@ -297,7 +310,7 @@ python -m pytest -q
 2. 支援 PDF/ODT/DOCX 附件抽取與附件法規關聯。
 3. 增加法規版本 diff API / MCP tool。
 4. 加 reranker（例如 multilingual cross-encoder）。
-5. 增加回答層：強制逐條引用 `法規名稱 + 條號 + source_url`。
+5. 擴充回答品質評估：建立 RAG-only、web fallback、法規版本衝突與引用完整性的離線案例集。
 6. GitHub Actions 定期 crawl 可改為「在有資料庫與站台可達性的 self-hosted runner」執行，避免公開 runner 對政府網站造成不必要流量。
 
 ## 法規與資料使用

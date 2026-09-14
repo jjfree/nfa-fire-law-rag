@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-ANSWER_MODEL_OPTIONS = ("gemma4:e2b", "gemma4:e4b")
+ANSWER_MODEL_OPTIONS = ("gemma4:e2b", "gemma4:e4b", "gemma4:31b-cloud")
 
 
 def build_response(query: str, hits: Iterable[Any]) -> dict[str, Any]:
@@ -76,6 +76,23 @@ def _render_response(st: Any, response: dict[str, Any]) -> None:
                 st.caption(f"LLM 狀態：{response['answer_error']}")
         else:
             st.info(response["answer"])
+    web_status = response.get("web_search_status")
+    if web_status == "used":
+        st.caption("本次 RAG 證據不足，已補充允許清單內的官方網頁資料。")
+    elif web_status == "unavailable":
+        st.caption("RAG 證據不足；web fallback 尚未設定 OLLAMA_API_KEY。")
+    elif web_status == "error":
+        st.caption("RAG 證據不足；web fallback 暫時無法連線，以下仍顯示本機結果。")
+    elif web_status == "no_results":
+        st.caption("RAG 證據不足；web search 沒有找到允許清單內的官方來源。")
+    if response.get("web_results"):
+        st.subheader("Web 補充來源")
+        for source in response["web_results"]:
+            with st.expander(source["title"], expanded=False):
+                st.caption(f"擷取時間：{source['retrieved_at']}")
+                if source.get("content_preview"):
+                    st.text(source["content_preview"])
+                st.link_button("開啟官方來源", source["url"])
     st.markdown(response["summary"])
     for index, row in enumerate(response["results"], start=1):
         article = row["article_label"]
@@ -168,9 +185,14 @@ def main() -> None:
             ),
             format_func=lambda model: (
                 f"{model}（速度優先）" if model == "gemma4:e2b" else f"{model}（品質優先）"
+                if model == "gemma4:e4b"
+                else f"{model}（雲端品質優先）"
             ),
         )
-        st.caption("e2b 較快；e4b 通常較完整。兩者都只依據檢索到的現行法規回答。")
+        st.caption(
+            "e2b 較快；e4b 通常較完整；31b-cloud 會使用 Ollama Cloud。"
+            "選擇 31b-cloud 時，即使 RAG 無命中也會嘗試 web fallback。"
+        )
         st.divider()
         st.caption(f"Backend：{settings.storage_backend}")
         st.caption(f"Embedding：{settings.embedding_provider} / {settings.embedding_dim} 維")
