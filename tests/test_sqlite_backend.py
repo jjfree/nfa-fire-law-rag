@@ -81,3 +81,32 @@ def test_sqlite_hybrid_search_combines_fts5_and_numpy():
 def test_sqlite_exact_article_matches_current_data():
     hits = exact_article("消防法", "第13條")
     assert [hit.article_label for hit in hits] == ["第13條"]
+
+
+def test_conversations_persist_title_and_exchange():
+    from app.conversations import (
+        create_conversation,
+        delete_conversation,
+        get_messages,
+        list_conversations,
+        rename_conversation,
+        save_exchange,
+    )
+
+    conversation_id = create_conversation()
+    assert rename_conversation(conversation_id, "消防設備問題")
+    save_exchange(
+        conversation_id,
+        "管理權人要設置什麼？",
+        response={"summary": "找到條文", "results": [{"article_label": "第13條"}]},
+    )
+
+    conversations = list_conversations()
+    conversation = next(item for item in conversations if item.id == conversation_id)
+    assert conversation.title == "消防設備問題"
+    messages = get_messages(conversation_id)
+    assert [message.role for message in messages] == ["user", "assistant"]
+    assert messages[1].response["results"][0]["article_label"] == "第13條"
+
+    assert delete_conversation(conversation_id)
+    assert all(item.id != conversation_id for item in list_conversations())

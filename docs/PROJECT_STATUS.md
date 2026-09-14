@@ -34,8 +34,8 @@ not required for the Windows SQLite target.
 | Embedding | `app/embedding.py` | Implemented deterministic hash and optional OpenAI providers |
 | Database | `app/db.py`, `app/models.py`, `scripts/init.sql` | SQLite default implemented; PostgreSQL optional |
 | API/MCP | `app/api.py`, `app/mcp_server.py` | Implemented PoC search and cited-answer interfaces |
-| Browser UI | `app/streamlit_app.py`, `.streamlit/config.toml`, `pyproject.toml` `ui` extra | Local read-only Streamlit Q&A/evidence interface implemented |
-| Tests | 10 test modules plus fixtures | 36 tests passing |
+| Browser UI | `app/streamlit_app.py`, `app/conversations.py`, `.streamlit/config.toml`, `pyproject.toml` `ui` extra | Local Streamlit Q&A/evidence interface with SQLite-persisted multi-conversation history, title editing, and deletion |
+| Tests | 10 test modules plus fixtures | 40 tests passing |
 | Evaluation | `eval/phase2_queries.json`, `app/evaluation.py`, CLI `eval` | Seed evaluation implemented; corpus-dependent |
 | Config | `app/config.py`, `.env.example`; local `.env` ignored | Implemented; secrets kept local |
 | Docs | `README.md`, `AGENTS.md`, and two `docs/` files | README and operational documentation are present |
@@ -180,13 +180,20 @@ check, and a pytest cache permission warning. They did not fail tests.
 - `app/answer.py` — local Ollama/Gemma answer generation with evidence validation.
 - `app/config.py`, `.env.example` — local LLM endpoint, model, thinking, timeout,
   temperature, and output-limit settings.
-- `app/api.py`, `app/mcp_server.py`, `app/streamlit_app.py` — cited-answer wiring
-  while preserving raw search and evidence display.
+- `app/api.py`, `app/mcp_server.py`, `app/streamlit_app.py`, `app/conversations.py` —
+  cited-answer wiring plus persisted local conversation history while preserving raw
+  search and evidence display.
+- `app/models.py` — adds `conversations` and `conversation_messages` tables; SQLite
+  `create_all` adds them automatically to an existing local database.
 - `tests/test_answer.py`, `tests/test_streamlit_app.py` — offline answer-layer and
   UI integration tests.
-- `scripts/start_streamlit.bat` — Windows launcher that starts Streamlit and opens the local Q&A URL.
+- `scripts/start_streamlit.bat` — Windows launcher that stops only the repository's
+  prior Streamlit process on the configured local port, waits for the health endpoint,
+  and then opens the local Q&A URL.
 - `.streamlit/config.toml` — disables Streamlit usage statistics for local-only operation.
-- `tests/test_streamlit_app.py` — UI response/provenance tests without requiring Streamlit at import time.
+- `tests/test_streamlit_app.py`, `tests/test_sqlite_backend.py` — UI response/provenance
+  tests and offline conversation persistence coverage without requiring Streamlit at
+  import time.
 - `tests/test_start_streamlit_bat.py` — offline checks for launcher paths, loopback binding, and no crawl/install behavior.
 - `pyproject.toml` — adds the optional `ui` dependency extra for Streamlit.
 

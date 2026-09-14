@@ -91,17 +91,65 @@ def _render_response(st: Any, response: dict[str, Any]) -> None:
             st.link_button("開啟原始法規來源", row["source_url"])
 
 
+def _ensure_active_conversation(st: Any) -> tuple[int, list[Any]]:
+    """Create the first conversation and recover from deleted/stale selections."""
+    from app.conversations import create_conversation, list_conversations
+
+    conversations = list_conversations()
+    if not conversations:
+        conversation_id = create_conversation()
+        conversations = list_conversations()
+    else:
+        conversation_id = st.session_state.get("active_conversation_id")
+        valid_ids = {conversation.id for conversation in conversations}
+        if conversation_id not in valid_ids:
+            conversation_id = conversations[0].id
+    st.session_state.active_conversation_id = conversation_id
+    return conversation_id, conversations
+
+
+def _render_conversation_sidebar(st: Any, conversations: list[Any], active_id: int) -> None:
+    from app.conversations import delete_conversation, rename_conversation
+
+    st.header("對話列表")
+    st.caption("對話會保存在本機 SQLite，重啟後仍可繼續。")
+    for conversation in conversations:
+        select_col, menu_col = st.columns([5, 1])
+        with select_col:
+            label = f"▶ {conversation.title}" if conversation.id == active_id else conversation.title
+            if st.button(label, key=f"select_conversation_{conversation.id}", use_container_width=True):
+                st.session_state.active_conversation_id = conversation.id
+                st.rerun()
+        with menu_col, st.popover("⋯", use_container_width=True):
+            new_title = st.text_input(
+                "對話標題",
+                value=conversation.title,
+                key=f"conversation_title_{conversation.id}",
+            )
+            if st.button("儲存標題", key=f"rename_conversation_{conversation.id}"):
+                rename_conversation(conversation.id, new_title)
+                st.rerun()
+            if st.button("刪除對話", key=f"delete_conversation_{conversation.id}"):
+                delete_conversation(conversation.id)
+                st.session_state.pop("active_conversation_id", None)
+                st.rerun()
+
+
 def main() -> None:
     import streamlit as st
 
     from app.config import get_settings
+    from app.conversations import create_conversation, get_messages, save_exchange
+    from app.db import init_db
 
     settings = get_settings()
     st.set_page_config(page_title="消防法規 RAG", page_icon="🔥", layout="wide")
-    st.title("🔥 台灣消防法規 RAG")
-    st.caption("本機 SQLite + FTS5 + NumPy 混合檢索；回答以現行法規條文與來源為依據。")
+    init_db()
+    active_id, conversations = _ensure_active_conversation(st)
 
     with st.sidebar:
+        _render_conversation_sidebar(st, conversations, active_id)
+        st.divider()
         st.header("檢索設定")
         top_k = st.slider("顯示結果數", min_value=1, max_value=20, value=8)
         try:
@@ -128,25 +176,39 @@ def main() -> None:
         st.caption(f"Embedding：{settings.embedding_provider} / {settings.embedding_dim} 維")
         st.caption("僅建議在本機使用；未提供登入驗證。")
 
-    if "qa_history" not in st.session_state:
-        st.session_state.qa_history = []
+    active_title = next(item.title for item in conversations if item.id == active_id)
+    title_col, action_col = st.columns([6, 1])
+    with title_col:
+        st.title("🔥 台灣消防法規 RAG")
+        st.caption(f"目前對話：{active_title}")
+    with action_col:
+        st.write("")
+        if st.button("＋ 新增對話", type="primary", use_container_width=True):
+            st.session_state.active_conversation_id = create_conversation()
+            st.rerun()
 
-    for item in st.session_state.qa_history:
-        with st.chat_message("user"):
-            st.write(item["query"])
-        with st.chat_message("assistant"):
-            if "error" in item:
-                st.error(item["error"])
+    st.caption("本機 SQLite + FTS5 + NumPy 混合檢索；回答以現行法規條文與來源為依據。")
+
+    for message in get_messages(active_id):
+        with st.chat_message(message.role):
+            if message.role == "user":
+                st.write(message.content)
+            elif message.response and message.response.get("error"):
+                st.error(message.response["error"])
+            elif message.response:
+                _render_response(st, message.response)
             else:
-                _render_response(st, item["response"])
+                st.write(message.content)
 
     query = st.chat_input("例如：消防法第13條對管理權人有什麼要求？")
     if not query:
         return
 
+    # Render the submitted question before starting retrieval/LLM work so the
+    # user gets immediate feedback even when the local model takes a while.
     with st.chat_message("user"):
         st.write(query)
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant"), st.spinner("正在檢索法規並整理回答…"):
         try:
             response = search_question(
                 query,
@@ -156,11 +218,12 @@ def main() -> None:
             )
         except Exception as exc:  # noqa: BLE001 - surface local DB/config errors in the UI
             error = f"查詢失敗：{type(exc).__name__}: {exc}"
+            save_exchange(active_id, query, error=error)
             st.error(error)
-            st.session_state.qa_history.append({"query": query, "error": error})
         else:
             _render_response(st, response)
-            st.session_state.qa_history.append({"query": query, "response": response})
+            save_exchange(active_id, query, response=response)
+    st.rerun()
 
 
 if __name__ == "__main__":
