@@ -13,6 +13,7 @@ from functools import lru_cache
 
 from app.answer import AnswerGenerationError, OllamaAnswerer
 from app.config import get_settings
+from app.query_analysis import extract_focus_terms, split_query_facets
 from app.search import SearchHit, hybrid_search
 
 _COMPARISON_MARKERS = ("差異", "不同", "區別", "比較", "各自", "分別", "有何差別")
@@ -163,6 +164,122 @@ class OllamaReranker:
         return ordered[:top_k]
 
 
+def _evidence_key(hit: SearchHit) -> tuple[int, str | int]:
+    """Group repeated chunks from the same labelled legal provision."""
+    label = "".join((hit.article_label or "").split())
+    return (hit.law_id, label or hit.chunk_id)
+
+
+def _dedupe_provisions(hits: list[SearchHit]) -> list[SearchHit]:
+    unique: list[SearchHit] = []
+    seen: set[tuple[int, str | int]] = set()
+    for hit in hits:
+        key = _evidence_key(hit)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(hit)
+    return unique
+
+
+def _select_diverse_provisions(hits: list[SearchHit], top_k: int) -> list[SearchHit]:
+    """Prefer distinct laws first, then fill remaining slots by provision rank."""
+    unique = _dedupe_provisions(hits)
+    selected: list[SearchHit] = []
+    selected_keys: set[tuple[int, str | int]] = set()
+    seen_laws: set[int] = set()
+    for hit in unique:
+        if hit.law_id in seen_laws:
+            continue
+        selected.append(hit)
+        selected_keys.add(_evidence_key(hit))
+        seen_laws.add(hit.law_id)
+        if len(selected) == top_k:
+            return selected
+    for hit in unique:
+        key = _evidence_key(hit)
+        if key in selected_keys:
+            continue
+        selected.append(hit)
+        selected_keys.add(key)
+        if len(selected) == top_k:
+            break
+    return selected
+
+
+def _replacement_index(selected: list[SearchHit]) -> int:
+    """Prefer replacing a repeated-law result before removing source diversity."""
+    law_counts: dict[int, int] = {}
+    for hit in selected:
+        law_counts[hit.law_id] = law_counts.get(hit.law_id, 0) + 1
+    for index in range(len(selected) - 1, -1, -1):
+        if law_counts[selected[index].law_id] > 1:
+            return index
+    return len(selected) - 1
+
+
+def _is_primary_statute(hit: SearchHit) -> bool:
+    """Identify acts and statutes without treating subordinate 辦法 as the parent law."""
+    title = hit.law_title.strip()
+    return title.endswith("條例") or (title.endswith("法") and not title.endswith("辦法"))
+
+
+def _reserve_candidate(
+    selected: list[SearchHit], selected_keys: set[tuple[int, str | int]], candidate: SearchHit
+) -> None:
+    key = _evidence_key(candidate)
+    if key in selected_keys:
+        return
+    if len(selected) < 1:
+        selected.append(candidate)
+    else:
+        index = _replacement_index(selected)
+        selected_keys.discard(_evidence_key(selected[index]))
+        selected[index] = candidate
+    selected_keys.add(key)
+
+
+def _retrieve_with_facet_coverage(
+    query: str, top_k: int, law_title: str | None
+) -> list[SearchHit]:
+    """Keep broad-query leaders while reserving evidence for distinct facets."""
+    settings = get_settings()
+    candidate_limit = max(top_k, settings.reranker_candidate_limit)
+    base = hybrid_search(query, top_k=candidate_limit, law_title=law_title)
+    selected = _select_diverse_provisions(base, top_k)
+    selected_keys = {_evidence_key(hit) for hit in selected}
+
+    # A long composite query can rank many administrative directions ahead of
+    # the governing act. Keep the best matching parent statute when one is in
+    # the bounded candidate set; this is authority-aware, not title-specific.
+    primary_statute = next((hit for hit in base if _is_primary_statute(hit)), None)
+    if primary_statute is not None:
+        _reserve_candidate(selected, selected_keys, primary_statute)
+
+    focus_terms = extract_focus_terms(query)
+    facets = focus_terms or split_query_facets(query)[1:]
+    for facet in facets:
+        if any(
+            facet.lower()
+            in f"{hit.law_title}\n{hit.article_label or ''}\n{hit.heading or ''}\n{hit.content}".lower()
+            for hit in selected
+        ):
+            continue
+        facet_hits = hybrid_search(facet, top_k=min(max(top_k, 3), 8), law_title=law_title)
+        candidate = next(
+            (hit for hit in facet_hits if _evidence_key(hit) not in selected_keys),
+            None,
+        )
+        if candidate is None:
+            continue
+        if len(selected) < top_k:
+            selected.append(candidate)
+            selected_keys.add(_evidence_key(candidate))
+        else:
+            _reserve_candidate(selected, selected_keys, candidate)
+    return selected
+
+
 def retrieve_answer_hits(
     query: str, top_k: int, law_title: str | None = None
 ) -> list[SearchHit]:
@@ -174,6 +291,8 @@ def retrieve_answer_hits(
         and is_reranker_query(query)
     )
     if not should_rerank:
+        if extract_focus_terms(query) or len(split_query_facets(query)) > 1:
+            return _retrieve_with_facet_coverage(query, top_k, law_title)
         return hybrid_search(query, top_k=top_k, law_title=law_title)
 
     candidate_limit = max(top_k, settings.reranker_candidate_limit)

@@ -130,21 +130,10 @@ def build_evidence_cards(
     """Build client-side evidence cards that open through fragment targeting."""
     cards = [_EVIDENCE_CSS]
     local_count = len(local_results)
-    for index, source in enumerate(web_results, start=local_count + 1):
-        cards.append(
-            _evidence_card(
-                index=index,
-                title=source["title"],
-                metadata=f"官方網頁補充資料 · 擷取時間：{source['retrieved_at']}",
-                content=source.get("content_preview", ""),
-                source_url=source["url"],
-                anchor_prefix=anchor_prefix,
-            )
-        )
     for index, row in enumerate(local_results, start=1):
         article = row["article_label"]
         heading = f"｜{row['heading']}" if row["heading"] else ""
-        title = f"{index}. {row['law_title']}｜{article}{heading}｜版本 {row['version_no']}"
+        title = f"[{index}] {row['law_title']}｜{article}{heading}｜版本 {row['version_no']}"
         metadata = "hybrid={:.4f} · vector={:.4f} · lexical={:.4f}".format(
             row["hybrid_score"], row["vector_score"], row["lexical_score"]
         )
@@ -157,6 +146,17 @@ def build_evidence_cards(
                 source_url=row["source_url"],
                 anchor_prefix=anchor_prefix,
                 default_expanded=index == 1,
+            )
+        )
+    for index, source in enumerate(web_results, start=local_count + 1):
+        cards.append(
+            _evidence_card(
+                index=index,
+                title=f"[{index}] {source['title']}",
+                metadata=f"官方網頁補充資料 · 擷取時間：{source['retrieved_at']}",
+                content=source.get("content_preview", ""),
+                source_url=source["url"],
+                anchor_prefix=anchor_prefix,
             )
         )
     return "".join(cards)
@@ -249,8 +249,17 @@ def _render_response(
     elif web_status == "no_results":
         st.caption("RAG 證據不足；web search 沒有找到允許清單內的官方來源。")
     if web_results:
-        st.subheader("Web 補充來源")
+        st.subheader(f"Web 補充來源（{len(web_results)} 筆）")
     st.markdown(response["summary"])
+    if local_results or web_results:
+        st.caption(
+            f"證據編號：本機 [1]–[{len(local_results)}]"
+            + (
+                f"；Web [{len(local_results) + 1}]–[{evidence_count}]"
+                if web_results
+                else ""
+            )
+        )
     if local_results or web_results:
         st.markdown(
             build_evidence_cards(local_results, web_results, anchor_prefix),

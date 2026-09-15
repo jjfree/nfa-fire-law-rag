@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 import httpx
 
 from app.config import get_settings
+from app.query_analysis import extract_focus_terms
 
 
 class WebSearchError(RuntimeError):
@@ -30,6 +31,23 @@ class WebSearchResult:
     url: str
     content: str
     retrieved_at: str
+
+
+def filter_relevant_web_results(
+    query: str, results: list[WebSearchResult]
+) -> list[WebSearchResult]:
+    """Reject web evidence that misses every explicit inclusion target."""
+    focus_terms = extract_focus_terms(query)
+    if not focus_terms:
+        return results
+    return [
+        result
+        for result in results
+        if any(
+            term.lower() in f"{result.title}\n{result.content}".lower()
+            for term in focus_terms
+        )
+    ]
 
 
 def _configured_domains(value: str) -> tuple[str, ...]:
@@ -123,4 +141,4 @@ class OllamaWebSearchClient:
                     retrieved_at=result.retrieved_at,
                 )
             )
-        return enriched
+        return filter_relevant_web_results(query, enriched)

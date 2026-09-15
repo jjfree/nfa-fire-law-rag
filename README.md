@@ -196,8 +196,15 @@ curl --get 'http://localhost:8000/v1/ask' `
 檢索分數。此功能可用 `RERANKER_ENABLED` 關閉，並可調整 `RERANKER_MODEL`、
 `RERANKER_CANDIDATE_LIMIT`、`RERANKER_TIMEOUT_SECONDS` 與輸出限制；失敗時會安全回退
 到原始排序，不會阻斷回答。
+
+對「包含哪些？是否包含 X？」這類複合問題，回答入口會辨識明確查詢對象，保留不同
+法規來源及候選集中最相關的母法條文，避免精確命中的少見場所名稱被長問題的通用詞
+稀釋。`top_k` 控制本機
+RAG 證據數；若另有 Web 補充，其編號會接續在本機結果之後，不計入 `top_k`。
+
 Streamlit 前端會將已驗證的 `[N]` 引用轉成頁內連結，點擊後跳到並展開對應的本機
-RAG 條文或 web 補充證據；模型仍只需輸出原本的編號格式。
+RAG 條文或 Web 補充證據。證據卡依本機後 Web 的順序排列並顯示相同的 `[N]` 編號與
+編號範圍；模型仍只需輸出原本的編號格式。
 Streamlit 側邊欄也可在每次查詢時選擇 `gemma4:e2b`（速度優先）或
 `gemma4:e4b`（品質優先），或 `gemma4:31b-cloud`（雲端品質優先）；此選擇不會改寫
 全域設定。選擇 `gemma4:31b-cloud` 時，不論本機 RAG 是否命中，都會使用該模型；
@@ -205,7 +212,8 @@ Streamlit 側邊欄也可在每次查詢時選擇 `gemma4:e2b`（速度優先）
 
 當本機 RAG 沒有結果或最高 hybrid 分數低於 `WEB_SEARCH_MIN_HYBRID_SCORE`（預設 `0.35`）時，
 系統可使用 Ollama hosted web search 作為補充，再由本機 Gemma 彙整回答。搜尋結果
-只接受 `.env` 中 `WEB_SEARCH_ALLOWED_DOMAINS` 指定的 HTTPS 官方網域，回答 API 會在
+只接受 `.env` 中 `WEB_SEARCH_ALLOWED_DOMAINS` 指定的 HTTPS 官方網域，並排除未包含
+問題明確查詢對象的結果；回答 API 會在
 `web_results` 回傳標題、來源連結、擷取時間與內容摘要。啟用此功能前，請在本機
 `.env` 設定 `OLLAMA_API_KEY`；此 key 同時用於 `gemma4:31b-cloud` 與 web fallback。
 未設定時仍可正常使用本機 RAG/LLM，但 cloud/web 功能

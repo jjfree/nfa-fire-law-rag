@@ -1,7 +1,13 @@
 import httpx
 import pytest
 
-from app.web_search import OllamaWebSearchClient, WebSearchUnavailable, is_allowed_web_url
+from app.web_search import (
+    OllamaWebSearchClient,
+    WebSearchResult,
+    WebSearchUnavailable,
+    filter_relevant_web_results,
+    is_allowed_web_url,
+)
 
 
 def test_allowed_web_url_requires_https_and_configured_domain():
@@ -79,3 +85,25 @@ def test_ollama_web_search_requires_api_key(monkeypatch):
 
     with pytest.raises(WebSearchUnavailable):
         OllamaWebSearchClient().search("消防設備人員")
+
+
+def test_web_relevance_filter_rejects_results_missing_inclusion_target():
+    relevant = WebSearchResult(
+        "各類場所消防安全設備設置標準",
+        "https://law.nfa.gov.tw/relevant",
+        "乙類場所包括寺廟、宗祠及教堂。",
+        "2026-09-15T00:00:00+00:00",
+    )
+    unrelated = WebSearchResult(
+        "相關法條",
+        "https://law.nfa.gov.tw/unrelated",
+        "消防法第十三條規定防火管理人相關事項。",
+        "2026-09-15T00:00:00+00:00",
+    )
+
+    results = filter_relevant_web_results(
+        "請說明消防列管場所包含哪些？是否包含寺廟？",
+        [unrelated, relevant],
+    )
+
+    assert results == [relevant]

@@ -154,3 +154,46 @@ def test_retrieve_answer_hits_keeps_ordinary_search_deterministic(monkeypatch):
 
     assert results == candidates
     assert calls == [("請說明消防法第7條內容", 8, None)]
+
+
+def test_composite_place_query_keeps_statute_and_inclusion_evidence(monkeypatch):
+    from app import rerank
+
+    query = "請說明消防列管場所包含哪些？是否包含寺廟？"
+    temple = _hit(100, "各類場所按用途分類如下：乙類場所包含寺廟、宗祠及教堂。")
+    temple.law_id = 100
+    temple.law_title = "各類場所消防安全設備設置標準"
+    temple.article_label = "第12條"
+    temple.lexical_score = 1.0
+    temple.hybrid_score = 0.7
+    related_temple = _hit(101, "寺廟場所收容人數之計算方式。")
+    related_temple.law_id = 100
+    related_temple.law_title = temple.law_title
+    related_temple.article_label = "第157條"
+    base = [temple, related_temple]
+    for index in range(1, 9):
+        hit = _hit(index, f"列管場所候選條文 {index}")
+        hit.law_id = index
+        hit.law_title = f"檢查注意事項{index}"
+        hit.article_label = f"第{index}點"
+        base.append(hit)
+    statute = _hit(20, "消防機關得依各類場所之危險程度分類列管檢查及複查。")
+    statute.law_id = 20
+    statute.law_title = "消防法"
+    statute.article_label = "第6條"
+    base.append(statute)
+
+    def fake_search(search_query, top_k, law_title):
+        if search_query == "寺廟":
+            return [temple]
+        return base[:top_k]
+
+    monkeypatch.setattr(rerank, "get_settings", lambda: _settings())
+    monkeypatch.setattr(rerank, "hybrid_search", fake_search)
+
+    results = rerank.retrieve_answer_hits(query, top_k=8)
+
+    evidence = {(hit.law_title, hit.article_label) for hit in results}
+    assert ("消防法", "第6條") in evidence
+    assert ("各類場所消防安全設備設置標準", "第12條") in evidence
+    assert len(results) == 8

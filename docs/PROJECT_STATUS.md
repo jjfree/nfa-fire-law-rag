@@ -35,13 +35,13 @@ not required for the Windows SQLite target.
 | Database | `app/db.py`, `app/models.py`, `scripts/init.sql` | SQLite default implemented; PostgreSQL optional |
 | API/MCP | `app/api.py`, `app/mcp_server.py` | Implemented PoC search and cited-answer interfaces |
 | Browser UI | `app/streamlit_app.py`, `app/conversations.py`, `.streamlit/config.toml`, `pyproject.toml` `ui` extra | Local Streamlit Q&A/evidence interface with SQLite-persisted multi-conversation history, title editing, and deletion |
-| Tests | 14 test modules plus fixtures | 64 tests passing |
+| Tests | 15 test modules plus fixtures | 69 tests passing |
 | Evaluation | `eval/phase2_queries.json`, `app/evaluation.py`, CLI `eval` | Seed evaluation implemented; corpus-dependent |
 | Config | `app/config.py`, `.env.example`; local `.env` ignored | Implemented; secrets kept local |
 | Docs | `README.md`, `AGENTS.md`, four `docs/` files, versioned screenshots, system-manual PDF, and frontend Word/PDF guides | README, full system manual, frontend user guide, editable/print deliverables, and operational documentation are present |
 | Windows launchers | `scripts/start_streamlit.bat` | Implemented; starts the local UI and opens the browser without crawling or installing |
 | Requirements files | No `requirements*.txt`/`.in`; dependencies in `pyproject.toml` | `pyproject.toml` is the source of truth |
-| Data | Ignored local `data/nfa_fire_law.db` (~98 MB) and `data/test.txt` | Local/generated; not commit candidates |
+| Data | Ignored local `data/nfa_fire_law.db` (~128 MiB) and `data/test.txt` | Local/generated; not commit candidates |
 
 Functional directories named `ingestion`, `retrieval`, `database`, `config`, or
 `docs` do not all exist as separate folders; their current functionality is located
@@ -85,6 +85,10 @@ future capability, **可沿用** means keep as the current extension point, and
 - SQLite retrieval fuses FTS5 candidates, exact law-title routing, structured legal
   definition signals, text overlap, and NumPy cosine similarity. Hash embeddings
   use a lower provider-specific vector weight; exact article lookup is also present.
+- Composite inclusion questions are split into focused retrieval facets. Exact named
+  objects receive a conservative lexical signal, and the answer-facing merge reserves
+  evidence coverage across distinct facets plus the best matching parent statute in the
+  bounded candidate set before optional reranking.
 - FastAPI health/search/article/law/version/admin endpoints and MCP tools exist.
 - A local Streamlit UI supports natural-language queries, law filtering, result
   counts, current-version evidence, scores, source links, and clickable answer
@@ -168,7 +172,9 @@ no live crawl was run.
 | NumPy | 2.5.3; float32 array and norm calculation passed |
 | Streamlit UI dependency | `1.63.0` installed in repository `.venv` |
 | Ollama hosted web-search key | Configured only in ignored local `.env`; live cloud/web request was not run |
-| repository tests | `64 passed, 12 warnings` after the frontend-guide documentation and artifact generation changes |
+| repository tests | `69 passed, 12 warnings` after the composite-query retrieval, web relevance, citation-order, documentation, and artifact changes |
+| Ruff (changed Python files) | Passed |
+| Ruff (whole repository) | Three pre-existing findings remain: one `B008` in `app/cli.py` and import ordering in two crawler modules |
 
 The warnings were existing dependency/runtime warnings: `datetime.utcnow()` deprecation
 from SQLAlchemy-related defaults, the deprecated `sqlite3.version` read used for this
@@ -196,9 +202,13 @@ check, and a pytest cache permission warning. They did not fail tests.
 - `docs/MIGRATION_PLAN_SQLITE_HYBRID_RAG.md` — Phase 0–10 staged migration plan.
 - `app/answer.py` — local/cloud Ollama Gemma answer generation with evidence validation.
 - `app/rerank.py` — conditional answer-evidence reranking for comparison/scope questions,
-  with deterministic search and failure fallback preserved.
+  with deterministic search and failure fallback preserved; composite questions now
+  merge source-diverse, facet-covering evidence.
+- `app/query_analysis.py` — conservative composite-facet and explicit inclusion-target
+  extraction shared by retrieval and web-result validation.
 - `app/web_search.py` — bounded Ollama hosted web-search/fetch fallback with HTTPS
-  official-domain allowlisting and timestamped provenance.
+  official-domain allowlisting, timestamped provenance, and explicit-target relevance
+  filtering before evidence numbering.
 - `app/config.py`, `.env.example` — local LLM endpoint, model, thinking, timeout,
   temperature, output-limit, and optional web-fallback settings.
 - `app/api.py`, `app/mcp_server.py`, `app/streamlit_app.py`, `app/conversations.py` —
@@ -206,7 +216,7 @@ check, and a pytest cache permission warning. They did not fail tests.
   search and evidence display.
 - `app/models.py` — adds `conversations` and `conversation_messages` tables; SQLite
   `create_all` adds them automatically to an existing local database.
-- `tests/test_answer.py`, `tests/test_rerank.py`, `tests/test_web_search.py`,
+- `tests/test_answer.py`, `tests/test_query_analysis.py`, `tests/test_rerank.py`, `tests/test_web_search.py`,
   `tests/test_streamlit_app.py` — offline answer-layer, reranking, web-fallback, and UI
   integration tests.
 - `scripts/start_streamlit.bat` — Windows launcher that stops only the repository's

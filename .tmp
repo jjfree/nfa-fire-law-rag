@@ -37,3 +37,52 @@ Validation
 - Full offline suite: 51 passed; remaining warnings are SQLAlchemy utcnow deprecation and pytest cache permissions.
 - Real local corpus:「主管機關」now ranks 消防法第3條 first at 0.7528 and does not trigger web fallback.
 - Real local corpus:「管理權人」still ranks 消防法第2條 first at 0.8019 and does not trigger web fallback.
+
+Composite place-query correction (2026-09-15)
+
+Observed issue
+- For「請說明消防列管場所包含哪些? 是否包含寺廟?」the eight local hits did not include
+  各類場所消防安全設備設置標準第12條, even though the current SQLite corpus contains it.
+- The authoritative local evidence was 消防法第6條 at local evidence [8]. Web evidence was
+  appended as [9]-[11]; [11] was not an eleventh local retrieval result.
+- The best local hybrid score was 0.2152, below WEB_SEARCH_MIN_HYBRID_SCORE=0.35, so the
+  pre-generation fallback ran. The local 第12條 ranked about 40th for the composite query,
+  but ranked first for the focused query「寺廟」.
+- Stored response data contained eight local and three web evidence items. The UI generated
+  anchors for [8] and [11], but web cards lacked visible citation numbers, all web cards were
+  collapsed, and web cards were placed before local cards despite their later numbering.
+- Web result [11] discussed 消防法第13條 and did not support the cited classification claim.
+  Citation validation checked only that an evidence number existed, not semantic support.
+
+P0 implementation and acceptance criteria
+1. Render one evidence sequence in numerical order: local [1]-[8], then web [9]-[N].
+2. Put the visible bracketed evidence number on every local and web card.
+3. Add answer-facing retrieval coverage for composite questions so the final top-k can retain
+   distinct query facets, including both 消防法第6條 and 設置標準第12條 for the reported case.
+
+P1 implementation and acceptance criteria
+1. Add a general exact-key-term/entity signal that prevents a rare exact term such as「寺廟」
+   from being diluted by long-query n-gram coverage; do not hard-code one place name.
+2. Split composite questions conservatively into focused retrieval facets and merge candidates
+   by coverage and original score before optional reranking.
+3. Filter web results for query relevance before numbering and generation; generic related-law
+   pages that do not cover a meaningful query facet must not become answer evidence.
+4. Add deterministic offline regression tests for retrieval coverage, web relevance, citation
+   numbering/order, and the original question.
+5. Align Streamlit-visible documentation and regenerate the frontend DOCX/PDF artifacts.
+
+Final validation (2026-09-15)
+- Full offline suite: 69 passed, 12 warnings in 1.34s.
+- Ruff passed for all Python files changed by this P0/P1 correction. A whole-repository
+  scan still reports three unrelated pre-existing findings: app/cli.py B008 and import
+  ordering in app/crawler/categories.py and app/crawler/nfa_urls.py.
+- Real local corpus: the reported composite query retains 各類場所消防安全設備設置標準
+  第12條 at rank 1 and 消防法第6條 at rank 8 within top_k=8.
+- The best local score is above the configured 0.35 fallback threshold, so web search is
+  not triggered for the reported query.
+- Streamlit evidence cards are visibly numbered in answer order: local [1]-[top_k], then
+  filtered web evidence [top_k+1]-[N].
+- Frontend-guide PDF and system-manual PDF were rendered and all seven pages of each were
+  visually inspected. The DOCX ZIP/media/paragraph/table structure passed validation;
+  an independent DOCX-to-image render was unavailable because the bundled runtime does
+  not include LibreOffice/soffice, so the same-source frontend PDF was used for visual QA.

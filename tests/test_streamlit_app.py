@@ -104,6 +104,9 @@ def test_build_evidence_cards_opens_target_with_fragment_without_query_reload():
 
     assert 'id="conversation-2-message-3-1"' in cards
     assert 'id="conversation-2-message-3-2"' in cards
+    assert "[1] 消防法" in cards
+    assert "[2] 官方補充" in cards
+    assert cards.index("[1] 消防法") < cards.index("[2] 官方補充")
     assert 'class="rag-evidence-card"' in cards
     assert "?evidence=" not in cards
     assert "本法所稱主管機關。" in cards

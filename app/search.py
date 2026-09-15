@@ -8,6 +8,7 @@ from app.config import get_settings
 from app.db import embedding_from_storage, session_scope
 from app.embedding import get_embedder
 from app.models import Law, LawChunk, LawVersion
+from app.query_analysis import extract_focus_terms
 
 ARTICLE_HINT_RE = re.compile(
     r"(第\s*[一二三四五六七八九十百千萬〇○零兩\d\-之]+\s*條(?:\s*之\s*[一二三四五六七八九十百千\d]+)?)"
@@ -161,6 +162,12 @@ def _text_lexical_score(
         return len(query_terms & terms) / len(query_terms) if terms else 0.0
 
     score = max(overlap(content), overlap(heading) * 0.9, overlap(title) * 0.8)
+    searchable_text = " ".join(value for value in (title, article, heading, content) if value).lower()
+    if any(term.lower() in searchable_text for term in extract_focus_terms(query)):
+        # Inclusion questions often contain one decisive noun surrounded by
+        # generic wording. Exact coverage of that noun must not be diluted by
+        # the long-query n-gram denominator.
+        score = max(score, 1.0)
     score = max(score, _definition_score(query, content))
     hint = _article_hint(query)
     if hint and re.sub(r"\s+", "", article or "") == hint:

@@ -169,6 +169,18 @@ def test_definition_boost_prefers_definition_of_query_term_over_reference():
     assert reference_score < definition_score
 
 
+def test_inclusion_target_exact_match_is_not_diluted_by_question_wording():
+    query = "請說明消防列管場所包含哪些？是否包含寺廟？"
+    matching = "各類場所按用途分類如下：乙類場所包含寺廟、宗祠及教堂。"
+    unrelated = "消防機關得依場所危險程度分類列管檢查及複查。"
+
+    matching_score = _text_lexical_score(query, "設置標準", "第12條", "", matching)
+    unrelated_score = _text_lexical_score(query, "消防法", "第6條", "", unrelated)
+
+    assert matching_score == 1.0
+    assert unrelated_score < matching_score
+
+
 def test_action_query_still_prefers_obligation_over_definition():
     hits = hybrid_search("管理權人應負哪些消防安全設備維護責任", top_k=3)
 
