@@ -2,7 +2,7 @@
 
 可執行的「內政部消防署消防預防調查法令」知識庫（目前 Phase 2 / v0.2）：
 
-完整的系統架構、爬取設計、安裝啟動與 Streamlit 操作，請參閱 [`docs/SYSTEM_MANUAL.md`](docs/SYSTEM_MANUAL.md)；列印/分享版為 [`output/pdf/nfa-fire-law-rag-system-manual.pdf`](output/pdf/nfa-fire-law-rag-system-manual.pdf)，文件對齊規範則見 [`AGENTS.md`](AGENTS.md)。本 README 保留快速啟動與開發者入口。
+完整的系統架構、爬取設計與安裝啟動，請參閱 [`docs/SYSTEM_MANUAL.md`](docs/SYSTEM_MANUAL.md)與 [`output/pdf/nfa-fire-law-rag-system-manual.pdf`](output/pdf/nfa-fire-law-rag-system-manual.pdf)。前端使用者可直接查閱含畫面的 [`docs/FRONTEND_USER_GUIDE.md`](docs/FRONTEND_USER_GUIDE.md)、[`output/docx/nfa-fire-law-rag-frontend-user-guide.docx`](output/docx/nfa-fire-law-rag-frontend-user-guide.docx) 或 [`output/pdf/nfa-fire-law-rag-frontend-user-guide.pdf`](output/pdf/nfa-fire-law-rag-frontend-user-guide.pdf)。文件對齊規範見 [`AGENTS.md`](AGENTS.md)；本 README 保留快速啟動與開發者入口。
 
 `crawler → 法規條文解析 → SQLite + FTS5 + NumPy → Hybrid Search → Ollama/Gemma answer layer → FastAPI → MCP`
 

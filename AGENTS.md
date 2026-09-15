@@ -198,6 +198,7 @@ The document responsibilities are:
 | Document | Role | Update when |
 |---|---|---|
 | `docs/SYSTEM_MANUAL.md` | User/operator manual for architecture, crawler design, installation, startup, UI, and operations | Behavior, operation, architecture, configuration, data model, or security boundary changes |
+| `docs/FRONTEND_USER_GUIDE.md` plus `output/docx/nfa-fire-law-rag-frontend-user-guide.docx` and `output/pdf/nfa-fire-law-rag-frontend-user-guide.pdf` | Frontend-only user instructions with versioned screenshots and synchronized Word/PDF editions | Streamlit-visible behavior, wording, controls, defaults, answer/evidence states, conversation handling, or launcher workflow changes |
 | `README.md` | Short project entry point and quick start | Initial setup, main entrypoint, required commands, or supported scope changes |
 | `AGENTS.md` | Developer and agent working contract | Platform, data safety, testing, Git, architecture, or maintenance rules change |
 | `docs/PROJECT_STATUS.md` | Evidence-backed status, risks, test baseline, and residual disposition | Feature status, test baseline, documentation inventory, or residual disposition changes |
@@ -213,7 +214,7 @@ Use this alignment matrix before delivery:
 | Schema, versioning, FTS5, or embedding | System manual data/retrieval sections; migration plan; project status | SQLite/FTS5/ingestion/version tests; never use the real database for destructive test setup |
 | Search, rerank, answer, or citation behavior | System manual retrieval/UI sections; README embedding/answer notes | Search/answer/rerank/web tests; inspect provenance and citations |
 | FastAPI or MCP contract | System manual API/MCP section; README API/MCP notes | API/MCP smoke tests and updated tool/field inventory |
-| Streamlit UI or launcher | System manual startup/UI sections; README UI notes; project status inventory | UI/launcher tests; verify loopback binding and persistence |
+| Streamlit UI or launcher | System manual startup/UI sections; frontend user guide, affected screenshots, Word/PDF editions; README UI notes; project status inventory | UI/launcher tests; verify loopback binding and persistence; inspect every rendered manual page |
 | Configuration, dependency, or installation workflow | System manual installation/configuration sections; `.env.example`; `pyproject.toml`; README | Run commands with the repository-local `.venv` |
 | Security, public deployment, or data-use policy | System manual boundary/security sections; this contract; README warnings | Check host allowlist, TLS, authentication, and that secrets are not in Git |
 
@@ -242,3 +243,23 @@ $pdfPython = "C:\\Users\\james.chang\\.cache\\codex-runtimes\\codex-primary-runt
 Do not hand-edit the PDF or update only the PDF. If the PDF layout changes,
 re-render it and verify that Chinese glyphs, tables, code blocks, page numbers,
 and section transitions remain readable before delivery.
+
+The frontend guide has five synchronized, versioned source/output surfaces:
+
+- `docs/FRONTEND_USER_GUIDE.md` is the text source of truth.
+- `docs/assets/frontend-user-guide/` contains the current UI screenshots.
+- `scripts/build_frontend_user_guide.py` builds both deliverable formats.
+- `output/docx/nfa-fire-law-rag-frontend-user-guide.docx` is the editable edition.
+- `output/pdf/nfa-fire-law-rag-frontend-user-guide.pdf` is the print/share edition.
+
+When Streamlit-visible behavior or the launcher workflow changes, update the
+affected Markdown sections and screenshots, rebuild both outputs, inspect every
+rendered DOCX and PDF page, and commit all affected files together:
+
+```powershell
+$artifactPython = "C:\Users\james.chang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe"
+& $artifactPython scripts\build_frontend_user_guide.py --format all
+```
+
+Do not hand-edit either generated edition. A pure internal refactor with no
+visible UI or workflow effect does not require replacing screenshots.

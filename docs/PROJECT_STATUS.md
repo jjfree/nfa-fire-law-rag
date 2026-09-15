@@ -1,8 +1,8 @@
 # Project Status — nfa-fire-law-rag
 
-Date: 2026-09-14
+Date: 2026-09-15
 Repository: `C:\Users\james.chang\source\nfa-fire-law-rag`
-Branch: `main` at `origin/main`; the tracked baseline is clean before this launcher change.
+Branch: `main` at `origin/main`; the tracked baseline was clean before this documentation change.
 
 ## Executive summary
 
@@ -26,7 +26,7 @@ not required for the Windows SQLite target.
 
 | Area | Current evidence | Assessment |
 |---|---|---|
-| Repository | 41 tracked files after this change; `main` is synchronized with `origin/main` after push | Present and maintainable |
+| Repository | 67 tracked files after this change; `main` is synchronized with `origin/main` after push | Present and maintainable |
 | Python package | `app/` with config, models, DB, parser, ingest, search, API, MCP | Substantially implemented |
 | Crawler | `app/crawler/{discovery,fetch,nfa_urls}.py` | Implemented, bounded and host-validated |
 | Ingestion | `app/ingest.py`, attachment handling, version/hash logic | Implemented with focused follow-up needs |
@@ -35,10 +35,10 @@ not required for the Windows SQLite target.
 | Database | `app/db.py`, `app/models.py`, `scripts/init.sql` | SQLite default implemented; PostgreSQL optional |
 | API/MCP | `app/api.py`, `app/mcp_server.py` | Implemented PoC search and cited-answer interfaces |
 | Browser UI | `app/streamlit_app.py`, `app/conversations.py`, `.streamlit/config.toml`, `pyproject.toml` `ui` extra | Local Streamlit Q&A/evidence interface with SQLite-persisted multi-conversation history, title editing, and deletion |
-| Tests | 10 test modules plus fixtures | 40 tests passing |
+| Tests | 14 test modules plus fixtures | 64 tests passing |
 | Evaluation | `eval/phase2_queries.json`, `app/evaluation.py`, CLI `eval` | Seed evaluation implemented; corpus-dependent |
 | Config | `app/config.py`, `.env.example`; local `.env` ignored | Implemented; secrets kept local |
-| Docs | `README.md`, `AGENTS.md`, three `docs/` files, and versioned system-manual PDF | README, full system manual, PDF deliverable, and operational documentation are present |
+| Docs | `README.md`, `AGENTS.md`, four `docs/` files, versioned screenshots, system-manual PDF, and frontend Word/PDF guides | README, full system manual, frontend user guide, editable/print deliverables, and operational documentation are present |
 | Windows launchers | `scripts/start_streamlit.bat` | Implemented; starts the local UI and opens the browser without crawling or installing |
 | Requirements files | No `requirements*.txt`/`.in`; dependencies in `pyproject.toml` | `pyproject.toml` is the source of truth |
 | Data | Ignored local `data/nfa_fire_law.db` (~98 MB) and `data/test.txt` | Local/generated; not commit candidates |
@@ -168,7 +168,7 @@ no live crawl was run.
 | NumPy | 2.5.3; float32 array and norm calculation passed |
 | Streamlit UI dependency | `1.63.0` installed in repository `.venv` |
 | Ollama hosted web-search key | Configured only in ignored local `.env`; live cloud/web request was not run |
-| repository tests | `51 passed, 12 warnings` after the cited-answer, web-fallback, cloud-model, and provider-aware definition-ranking additions |
+| repository tests | `64 passed, 12 warnings` after the frontend-guide documentation and artifact generation changes |
 
 The warnings were existing dependency/runtime warnings: `datetime.utcnow()` deprecation
 from SQLAlchemy-related defaults, the deprecated `sqlite3.version` read used for this
@@ -187,6 +187,12 @@ check, and a pytest cache permission warning. They did not fail tests.
   Markdown manual as the source of truth.
 - `output/pdf/nfa-fire-law-rag-system-manual.pdf` — versioned, rendered system-manual
   PDF for printing and sharing.
+- `docs/FRONTEND_USER_GUIDE.md` and `docs/assets/frontend-user-guide/` — frontend-only
+  instructions and current Streamlit screenshots.
+- `scripts/build_frontend_user_guide.py` — synchronized Word/PDF frontend-guide builder.
+- `output/docx/nfa-fire-law-rag-frontend-user-guide.docx` and
+  `output/pdf/nfa-fire-law-rag-frontend-user-guide.pdf` — editable and print/share
+  editions of the frontend user guide.
 - `docs/MIGRATION_PLAN_SQLITE_HYBRID_RAG.md` — Phase 0–10 staged migration plan.
 - `app/answer.py` — local/cloud Ollama Gemma answer generation with evidence validation.
 - `app/rerank.py` — conditional answer-evidence reranking for comparison/scope questions,
@@ -241,6 +247,12 @@ maintenance section points to the normative documentation-alignment rules in
 `AGENTS.md`. `README.md` remains the short entry point; this file remains the
 evidence-backed status snapshot; and `docs/MIGRATION_PLAN_SQLITE_HYBRID_RAG.md`
 remains the staged roadmap.
+
+`docs/FRONTEND_USER_GUIDE.md` is the frontend-user source of truth. Its versioned
+screenshots and generated Word/PDF editions must be updated together whenever a
+Streamlit-visible control, default, workflow, answer/evidence state, or launcher
+instruction changes. The build and page-inspection contract is recorded in
+`AGENTS.md`.
 
 Future changes that affect behavior, commands, configuration, data contracts,
 provenance, security boundaries, or validation must follow the alignment matrix
