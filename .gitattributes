@@ -1,3 +1,4 @@
 *.docx binary
 *.pdf binary
 *.png binary
+*.bat text eol=crlf

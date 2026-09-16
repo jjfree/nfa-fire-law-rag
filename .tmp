@@ -140,3 +140,13 @@ Validation
 - .venv\\Scripts\\python.exe -m pytest -q: 69 passed, 12 warnings.
 - Ruff passed for all changed Python files; app/cli.py was checked with the repository's
   pre-existing B008 exception ignored. git diff --check passed.
+
+Launcher regression check (2026-09-16)
+
+- Reproduced the failure after the branding edit: the launcher had LF-only line endings,
+  so Windows cmd.exe misparsed quoted paths and reported scripts\\.., streamlit_app.py,
+  and http: as commands.
+- Converted scripts/start_streamlit.bat to UTF-8 CRLF and added a repository attribute
+  enforcing CRLF for future Windows checkouts.
+- Re-ran cmd.exe /d /c scripts\\start_streamlit.bat successfully; the health endpoint
+  returned HTTP 200 with body ok at http://127.0.0.1:8501/_stcore/health.
