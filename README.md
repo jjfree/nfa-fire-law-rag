@@ -189,7 +189,12 @@ curl --get 'http://localhost:8000/v1/ask' `
 回答層只把本機檢索找到的現行法規片段交給模型，要求以 `[1]`、`[2]`
 等證據編號引用；若 Ollama 不可用或模型輸出沒有有效引用，系統會保留原文證據，
 不會把未驗證的生成文字當成答案。可在 `.env` 調整 `LLM_BASE_URL`、`LLM_MODEL`、
-`LLM_TIMEOUT_SECONDS`、`LLM_TEMPERATURE`、`LLM_THINK` 與 `LLM_MAX_OUTPUT_TOKENS`。
+`LLM_TIMEOUT_SECONDS`、`LLM_TEMPERATURE` 與 `LLM_THINK`。三個前端模型各自使用
+可設定的 context/output profile：`e2b` 預設 `8192/2048`、`e4b` 預設
+`16384/4096`、`31b-cloud` 預設 `262144/8192` tokens；未知模型才使用
+`LLM_MAX_OUTPUT_TOKENS=1024`。實際輸出上限還會扣除 prompt 與安全餘量，並受本機
+`/api/show` 回報的架構 context 限制。若 Ollama 回報長度截斷，系統會精簡重試一次；
+仍未完成時會標示為 incomplete，不再當成正常答案。
 遇到角色比較或權限／業務範圍問題時，回答入口會先取較大的 hybrid 候選集，再由
 固定的 `gemma4:31b-cloud` 只重新排列候選條文，避免真正分配職務的條文被大量「僅提到
 角色名稱」的條文擠出前 8 筆。原始 `/v1/search` 不使用此步驟，仍可用來檢查原始
@@ -197,16 +202,17 @@ curl --get 'http://localhost:8000/v1/ask' `
 `RERANKER_CANDIDATE_LIMIT`、`RERANKER_TIMEOUT_SECONDS` 與輸出限制；失敗時會安全回退
 到原始排序，不會阻斷回答。
 
-對「包含哪些？是否包含 X？」這類複合問題，回答入口會辨識明確查詢對象，保留不同
-法規來源及候選集中最相關的母法條文，避免精確命中的少見場所名稱被長問題的通用詞
-稀釋。`top_k` 控制本機
+對「包含哪些？是否包含 X？」或「某主題相關規定」這類跨法規問題，回答入口會辨識
+明確查詢對象或法規主題，從 bounded candidate pool 保留直接主管辦法、相關母法及
+不同法規來源；同一法規先限制為最多兩筆，再以原始相關度補滿，避免單一注意事項
+排擠其他法源。`top_k` 控制本機
 RAG 證據數；若另有 Web 補充，其編號會接續在本機結果之後，不計入 `top_k`。
 回答證據會先列直接涵蓋明確對象的條文，再列相關母法；這只調整回答證據順序，卡片
 顯示的 hybrid/vector/lexical 仍是原始檢索分數，不代表法律位階。
 
 Streamlit 前端會將已驗證的 `[N]` 引用轉成頁內連結，點擊後跳到並展開對應的本機
-RAG 條文或 Web 補充證據。證據卡依本機後 Web 的順序排列並顯示相同的 `[N]` 編號與
-編號範圍；模型仍只需輸出原本的編號格式。
+RAG 條文或 Web 補充證據。本機證據依法規名稱分組，但每一條仍保留獨立 `[N]` 編號；
+回答下方另顯示模型、當次有效輸出上限、停止原因與重試次數，方便判斷截斷。
 Streamlit 側邊欄也可在每次查詢時選擇 `gemma4:e2b`（速度優先）或
 `gemma4:e4b`（品質優先），或 `gemma4:31b-cloud`（雲端品質優先）；此選擇不會改寫
 全域設定。選擇 `gemma4:31b-cloud` 時，不論本機 RAG 是否命中，都會使用該模型；

@@ -318,7 +318,7 @@ def build_docx(metadata: dict[str, str], blocks: list[Block], output: Path) -> N
                 raise FileNotFoundError(block.path)
             paragraph = document.add_paragraph()
             paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            width = Inches(3.2) if "sidebar" in block.path.name else Inches(6.65)
+            width = Inches(2.9) if "sidebar" in block.path.name else Inches(6.65)
             shape = paragraph.add_run().add_picture(str(block.path), width=width)
             shape._inline.docPr.set("descr", block.caption)
             paragraph.paragraph_format.keep_with_next = True
@@ -534,7 +534,7 @@ def build_pdf(metadata: dict[str, str], blocks: list[Block], output: Path) -> No
                 raise FileNotFoundError(block.path)
             with PILImage.open(block.path) as source_image:
                 source_width, source_height = source_image.size
-            max_width = 3.25 * inch if "sidebar" in block.path.name else available_width
+            max_width = 2.9 * inch if "sidebar" in block.path.name else available_width
             max_height = 6.6 * inch
             scale = min(max_width / source_width, max_height / source_height)
             picture = Image(

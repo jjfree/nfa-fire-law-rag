@@ -12,6 +12,10 @@ _INCLUSION_OBJECT_RE = re.compile(
 _OBJECT_SPLIT_RE = re.compile(r"[、與和及]")
 _TRAILING_PARTICLES_RE = re.compile(r"(?:嗎|呢|之內|在內)$")
 _IGNORED_OBJECTS = {"哪些", "什麼", "何者", "何種", "那些", "哪一些"}
+_BROAD_TOPIC_MARKERS = ("相關規定", "有哪些規定", "規定為何", "規定有哪些")
+_ARTICLE_HINT_RE = re.compile(
+    r"第\s*[一二三四五六七八九十百千萬〇○零兩\d\-之]+\s*條"
+)
 
 
 def extract_focus_terms(query: str) -> tuple[str, ...]:
@@ -37,3 +41,11 @@ def split_query_facets(query: str) -> tuple[str, ...]:
         if term not in facets:
             facets.append(term)
     return tuple(facets)
+
+
+def is_broad_regulatory_query(query: str) -> bool:
+    """Detect topic-level requests that need coverage across governing sources."""
+    normalized = re.sub(r"\s+", "", query)
+    return not _ARTICLE_HINT_RE.search(normalized) and any(
+        marker in normalized for marker in _BROAD_TOPIC_MARKERS
+    )

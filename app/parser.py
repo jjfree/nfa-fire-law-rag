@@ -30,6 +30,7 @@ ARTICLE_RE = re.compile(rf"^(第\s*[{CN_NUM}\d\-之]+\s*條(?:\s*之\s*[{CN_NUM}
 CHAPTER_RE = re.compile(rf"^(第\s*[{CN_NUM}\d]+\s*章)\s*(.*)$")
 SECTION_RE = re.compile(rf"^(第\s*[{CN_NUM}\d]+\s*節)\s*(.*)$")
 POINT_RE = re.compile(rf"^([{CN_NUM}]+、)\s*(.*)$")
+PAREN_POINT_RE = re.compile(rf"^([（(][{CN_NUM}]+[）)])\s*(.*)$")
 ARABIC_POINT_RE = re.compile(r"^(\d+[\.、])\s*(.*)$")
 LAW_NAME_LINE_RE = re.compile(r"法規名稱[：:]\s*([^\n]+)")
 TRAILING_DATE_RE = re.compile(
@@ -216,24 +217,64 @@ def split_legal_text(text: str) -> list[ParsedChunk]:
     else:
         # Administrative directions commonly use 一、二、... or 1./2. rather
         # than 第X條. Formal numerals (壹、貳、...) are accepted as well.
-        has_points = any((POINT_RE.match(line) or ARABIC_POINT_RE.match(line)) for line in lines)
+        def admin_marker(line: str) -> tuple[re.Match[str], int] | None:
+            for pattern, level in (
+                (POINT_RE, 1),
+                (PAREN_POINT_RE, 2),
+                (ARABIC_POINT_RE, 3),
+            ):
+                match = pattern.match(line)
+                if match:
+                    return match, level
+            return None
+
+        marker_levels = [marker[1] for line in lines if (marker := admin_marker(line))]
+        has_points = bool(marker_levels)
+        has_hierarchy = len(set(marker_levels)) > 1
         current_label: str | None = None
+        current_heading: str | None = None
         current: list[str] = []
+        heading_path: dict[int, str] = {}
 
         def flush_point():
             nonlocal current
             if current and (current_label is not None or not has_points):
                 chunks.append(
-                    ParsedChunk(len(chunks), current_label, None, "\n".join(current).strip())
+                    ParsedChunk(
+                        len(chunks),
+                        current_label,
+                        current_heading,
+                        "\n".join(current).strip(),
+                    )
                 )
             current = []
 
-        for line in lines:
-            point = POINT_RE.match(line) or ARABIC_POINT_RE.match(line)
-            if point:
+        for index, line in enumerate(lines):
+            marker = admin_marker(line)
+            if marker:
+                point, level = marker
                 flush_point()
-                current_label = point.group(1).strip()
-                current = [line]
+                next_level = next(
+                    (
+                        next_marker[1]
+                        for later in lines[index + 1 :]
+                        if (next_marker := admin_marker(later))
+                    ),
+                    None,
+                )
+                is_heading = has_hierarchy and next_level is not None and next_level > level
+                heading_path = {
+                    key: value for key, value in heading_path.items() if key < level
+                }
+                if is_heading:
+                    heading_path[level] = line
+                    current_label = None
+                    current_heading = None
+                else:
+                    current_label = point.group(1).strip()
+                    parents = [heading_path[key] for key in sorted(heading_path) if key < level]
+                    current_heading = " / ".join(parents) or None
+                    current = [line]
             elif current_label is not None or not has_points:
                 current.append(line)
         flush_point()

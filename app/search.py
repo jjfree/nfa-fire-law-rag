@@ -33,6 +33,10 @@ _ACTION_QUERY_MARKERS = (
     "辦理",
 )
 _QUERY_PREFIXES = (
+    "請再次協助查詢",
+    "請再次協助說明",
+    "請再次查詢",
+    "請再次說明",
     "請協助查詢",
     "請協助說明",
     "麻煩查詢",
@@ -41,6 +45,23 @@ _QUERY_PREFIXES = (
     "請查詢",
     "請說明",
     "請問",
+)
+_TITLE_CONNECTOR_RE = re.compile(r"[\s、，,及與和暨（）()《》「」『』]+")
+_TITLE_SUFFIXES = (
+    "消防安全設備相關規定",
+    "相關規定",
+    "自治條例",
+    "注意事項",
+    "作業要點",
+    "處理原則",
+    "管理辦法",
+    "實施辦法",
+    "申報辦法",
+    "辦法",
+    "規則",
+    "標準",
+    "規程",
+    "要點",
 )
 _DEFINITION_TERM_RE = re.compile(
     r"(?:本法|本條例|本辦法|本規則|本須知|本標準)?所稱\s*"
@@ -91,8 +112,26 @@ def _normalize_query(query: str) -> str:
 
 
 def _matched_law_titles(query: str, titles: list[str]) -> tuple[str, ...]:
-    """Route a query to the longest exact law titles it names."""
-    matches = {title for title in titles if len(title) >= 3 and title in query}
+    """Route a query to exact or unambiguously normalized law-title intent."""
+
+    def intent_key(value: str) -> str:
+        key = _TITLE_CONNECTOR_RE.sub("", value)
+        for suffix in _TITLE_SUFFIXES:
+            if key.endswith(suffix):
+                key = key[: -len(suffix)]
+                break
+        return key
+
+    query_key = intent_key(_normalize_query(query))
+    matches = {
+        title
+        for title in titles
+        if len(title) >= 3
+        and (
+            title in query
+            or (len(intent_key(title)) >= 6 and intent_key(title) in query_key)
+        )
+    }
     if not matches:
         return ()
     return tuple(

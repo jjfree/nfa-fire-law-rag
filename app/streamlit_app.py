@@ -55,6 +55,15 @@ _EVIDENCE_CSS = """
   margin: 0.5rem 0;
   overflow: hidden;
 }
+.rag-evidence-group {
+  margin: 0.9rem 0 1.1rem 0;
+}
+.rag-evidence-group-title {
+  color: rgba(128, 128, 128, 0.95);
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin: 0 0 0.2rem 0.15rem;
+}
 .rag-evidence-toggle {
   position: absolute;
   opacity: 0;
@@ -130,24 +139,34 @@ def build_evidence_cards(
     """Build client-side evidence cards that open through fragment targeting."""
     cards = [_EVIDENCE_CSS]
     local_count = len(local_results)
+    groups: dict[str, list[tuple[int, dict[str, Any]]]] = {}
     for index, row in enumerate(local_results, start=1):
-        article = row["article_label"]
-        heading = f"｜{row['heading']}" if row["heading"] else ""
-        title = f"[{index}] {row['law_title']}｜{article}{heading}｜版本 {row['version_no']}"
-        metadata = "hybrid={:.4f} · vector={:.4f} · lexical={:.4f}".format(
-            row["hybrid_score"], row["vector_score"], row["lexical_score"]
-        )
+        groups.setdefault(row["law_title"], []).append((index, row))
+    for law_title, group_rows in groups.items():
+        cards.append('<section class="rag-evidence-group">')
         cards.append(
-            _evidence_card(
-                index=index,
-                title=title,
-                metadata=metadata,
-                content=row["content"],
-                source_url=row["source_url"],
-                anchor_prefix=anchor_prefix,
-                default_expanded=index == 1,
-            )
+            f'<div class="rag-evidence-group-title">{escape(law_title)}'
+            f"（{len(group_rows)} 筆）</div>"
         )
+        for index, row in group_rows:
+            article = row["article_label"]
+            heading = f"｜{row['heading']}" if row["heading"] else ""
+            title = f"[{index}] {law_title}｜{article}{heading}｜版本 {row['version_no']}"
+            metadata = "hybrid={:.4f} · vector={:.4f} · lexical={:.4f}".format(
+                row["hybrid_score"], row["vector_score"], row["lexical_score"]
+            )
+            cards.append(
+                _evidence_card(
+                    index=index,
+                    title=title,
+                    metadata=metadata,
+                    content=row["content"],
+                    source_url=row["source_url"],
+                    anchor_prefix=anchor_prefix,
+                    default_expanded=index == 1,
+                )
+            )
+        cards.append("</section>")
     for index, source in enumerate(web_results, start=local_count + 1):
         cards.append(
             _evidence_card(
@@ -233,12 +252,34 @@ def _render_response(
                 ),
                 unsafe_allow_html=True,
             )
+        elif response.get("answer_status") == "incomplete":
+            st.warning("模型回答未完整收尾；以下保留可驗證內容，請查看診斷資訊。")
+            st.markdown(
+                linkify_citations(
+                    response["answer"],
+                    response.get("answer_citations", []),
+                    evidence_count,
+                    anchor_prefix,
+                ),
+                unsafe_allow_html=True,
+            )
         elif response.get("answer_status") == "llm_error":
             st.warning(response["answer"])
             if response.get("answer_error"):
                 st.caption(f"LLM 狀態：{response['answer_error']}")
         else:
             st.info(response["answer"])
+    if response.get("answer_model"):
+        diagnostic_parts = [f"模型：{response['answer_model']}"]
+        if response.get("answer_effective_output_tokens"):
+            diagnostic_parts.append(
+                f"輸出上限：{response['answer_effective_output_tokens']} tokens"
+            )
+        if response.get("answer_done_reason"):
+            diagnostic_parts.append(f"停止原因：{response['answer_done_reason']}")
+        if response.get("answer_retry_count"):
+            diagnostic_parts.append(f"重試：{response['answer_retry_count']} 次")
+        st.caption(" · ".join(diagnostic_parts))
     web_status = response.get("web_search_status")
     if web_status == "used":
         st.caption("本次 RAG 證據不足，已補充允許清單內的官方網頁資料。")

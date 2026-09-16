@@ -1,6 +1,6 @@
 # Project Status — nfa-fire-law-rag
 
-Date: 2026-09-15
+Date: 2026-09-16
 Repository: `C:\Users\james.chang\source\nfa-fire-law-rag`
 Branch: `main` at `origin/main`; the tracked baseline was clean before this documentation change.
 
@@ -35,7 +35,7 @@ not required for the Windows SQLite target.
 | Database | `app/db.py`, `app/models.py`, `scripts/init.sql` | SQLite default implemented; PostgreSQL optional |
 | API/MCP | `app/api.py`, `app/mcp_server.py` | Implemented PoC search and cited-answer interfaces |
 | Browser UI | `app/streamlit_app.py`, `app/conversations.py`, `.streamlit/config.toml`, `pyproject.toml` `ui` extra | Local Streamlit Q&A/evidence interface with SQLite-persisted multi-conversation history, title editing, and deletion |
-| Tests | 15 test modules plus fixtures | 69 tests passing |
+| Tests | 16 test modules plus fixtures | 76 tests passing |
 | Evaluation | `eval/phase2_queries.json`, `app/evaluation.py`, CLI `eval` | Seed evaluation implemented; corpus-dependent |
 | Config | `app/config.py`, `.env.example`; local `.env` ignored | Implemented; secrets kept local |
 | Docs | `README.md`, `AGENTS.md`, four `docs/` files, versioned screenshots, system-manual PDF, and frontend Word/PDF guides | README, full system manual, frontend user guide, editable/print deliverables, and operational documentation are present |
@@ -91,6 +91,16 @@ future capability, **可沿用** means keep as the current extension point, and
   bounded candidate set before optional reranking. The answer evidence order promotes
   direct object coverage first and the related parent statute second without changing
   the stored retrieval scores.
+- Broad regulatory-topic questions now reserve the directly governing regulation and
+  related parent act from a bounded candidate pool. Evidence selection prioritizes
+  distinct laws, caps the first fill at two provisions per law, and retains separate
+  citations for repeated labels with different content.
+- Answer generation uses model-specific context/output profiles, records Ollama
+  completion metadata, retries a detected length truncation once, and reports an
+  explicit incomplete state if the retry still fails to finish.
+- Administrative-direction parsing preserves parent section/subsection headings for
+  repeated item labels on newly ingested versions. The Streamlit evidence view groups
+  cards by law while retaining stable per-provision citation numbers.
 - FastAPI health/search/article/law/version/admin endpoints and MCP tools exist.
 - A local Streamlit UI supports natural-language queries, law filtering, result
   counts, current-version evidence, scores, source links, and clickable answer
@@ -174,7 +184,7 @@ no live crawl was run.
 | NumPy | 2.5.3; float32 array and norm calculation passed |
 | Streamlit UI dependency | `1.63.0` installed in repository `.venv` |
 | Ollama hosted web-search key | Configured only in ignored local `.env`; live cloud/web request was not run |
-| repository tests | `69 passed, 12 warnings` after the composite-query retrieval, web relevance, citation-order, documentation, and artifact changes |
+| repository tests | `76 passed, 12 warnings` after broad-topic diversity, model-token, truncation-retry, parser hierarchy, citation, and UI grouping changes |
 | Ruff (changed Python files) | Passed |
 | Ruff (whole repository) | Three pre-existing findings remain: one `B008` in `app/cli.py` and import ordering in two crawler modules |
 

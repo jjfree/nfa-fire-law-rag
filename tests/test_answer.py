@@ -4,6 +4,7 @@ import pytest
 
 from app.answer import (
     AnswerGenerationError,
+    OllamaCompletion,
     answer_question,
     build_answer_prompt,
     build_evidence_context,
@@ -244,3 +245,60 @@ def test_cloud_model_uses_cloud_endpoint_and_api_key(monkeypatch):
         "model": "gemma4:31b-cloud",
         "api_key": "test-key",
     }
+
+
+def test_generate_answer_retries_length_truncation_and_returns_metadata(monkeypatch):
+    class FakeSettings:
+        llm_provider = "ollama"
+        llm_base_url = "http://127.0.0.1:11434"
+        llm_cloud_base_url = "https://ollama.com"
+        llm_model = "gemma4:e2b"
+        llm_timeout_seconds = 180.0
+        llm_temperature = 0.1
+        llm_think = False
+        llm_max_output_tokens = 1024
+        llm_completion_retry_limit = 1
+
+    responses = iter(
+        [
+            OllamaCompletion("未完成答案。[1]\n* 消防機", True, "length", 300, 512),
+            OllamaCompletion("完整精簡答案。[1]", True, "stop", 350, 100),
+        ]
+    )
+    monkeypatch.setattr("app.answer.get_settings", lambda: FakeSettings())
+    monkeypatch.setattr(
+        "app.answer.OllamaAnswerer.complete", lambda self, prompt: next(responses)
+    )
+
+    result = generate_answer("問題", [_hit()])
+
+    assert result.status == "ok"
+    assert result.answer == "完整精簡答案。[1]"
+    assert result.retry_count == 1
+    assert result.done_reason == "stop"
+    assert result.eval_count == 100
+
+
+def test_generate_answer_marks_second_truncation_incomplete(monkeypatch):
+    class FakeSettings:
+        llm_provider = "ollama"
+        llm_base_url = "http://127.0.0.1:11434"
+        llm_cloud_base_url = "https://ollama.com"
+        llm_model = "gemma4:e2b"
+        llm_timeout_seconds = 180.0
+        llm_temperature = 0.1
+        llm_think = False
+        llm_max_output_tokens = 1024
+        llm_completion_retry_limit = 1
+
+    monkeypatch.setattr("app.answer.get_settings", lambda: FakeSettings())
+    monkeypatch.setattr(
+        "app.answer.OllamaAnswerer.complete",
+        lambda self, prompt: OllamaCompletion("仍然中斷。[1]", True, "length", 300, 512),
+    )
+
+    result = generate_answer("問題", [_hit()])
+
+    assert result.status == "incomplete"
+    assert result.retry_count == 1
+    assert result.error == "模型回答未完整收尾"

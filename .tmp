@@ -150,3 +150,99 @@ Launcher regression check (2026-09-16)
   enforcing CRLF for future Windows checkouts.
 - Re-ran cmd.exe /d /c scripts\\start_streamlit.bat successfully; the health endpoint
   returned HTTP 200 with body ok at http://127.0.0.1:8501/_stcore/health.
+
+Proposed P0/P1: broad inspection-report query retrieval and answer completion (2026-09-16)
+
+Observed evidence
+- Query: 請再次說明消防安全設備檢修申報相關規定
+- 消防安全設備檢修及申報辦法第5條 exists as current chunk 909 but ranks 16th
+  in the raw top-24 (hybrid 0.4187), below the top-8 cutoff of 0.4675.
+- Five of the displayed eight results come from 消防機關受理消防安全設備檢修
+  申報及複查注意事項. Two results are both labelled 5. but contain different rules;
+  the parser does not preserve their parent section path, so label-only merging is unsafe.
+- The saved assistant answer itself ends with「消防機」at 703 characters. This is not
+  Streamlit display clipping. It was saved with answer_status=ok even though generation
+  was incomplete. The current global num_predict limit is 512 tokens, and the client does
+  not retain or validate done_reason/eval_count.
+
+P0
+1. Broad-topic retrieval coverage
+   - Retrieve a bounded candidate pool (default 24) for broad regulatory-topic queries,
+     not only inclusion/composite questions.
+   - Normalize title intent so connector/suffix differences such as「檢修申報」versus
+     「檢修及申報辦法」can still identify and boost the directly governing regulation.
+   - Reserve the best directly governing regulation and the relevant parent act when they
+     are present in the bounded pool; keep original hybrid/vector/lexical scores visible.
+2. Evidence diversity without unsafe merging
+   - Select distinct laws first, with an initial per-law cap (recommended 2), then fill
+     remaining slots by original relevance.
+   - Do not merge provisions solely by law_id + article_label until section hierarchy is
+     available. Preserve every selected provision as an independently citable item.
+3. Model-aware output budget selected from the frontend LLM
+   - Replace the single global 512-token answer limit with a resolver keyed by the model
+     selected in the frontend: gemma4:e2b, gemma4:e4b, or gemma4:31b-cloud.
+   - For the three supported models, maintain explicit configurable maximum output-token
+     caps validated for the deployed model/version. Compute the effective budget as the
+     minimum of the selected model cap and remaining context after prompt tokens plus a
+     safety margin. Do not equate context_length with output-token capacity.
+   - Do not use num_predict=-1 as the production maximum: Ollama documents it as unlimited
+     generation, which is unsuitable for bounded UI latency and completion guarantees.
+   - The frontend selection must flow to both model choice and resolved output budget;
+     unknown/custom models fall back to a conservative configurable default, not 512
+     silently and not an invented maximum.
+4. Completion detection and bounded recovery
+   - Capture done, done_reason, prompt_eval_count, and eval_count from Ollama responses.
+   - A length-limited or syntactically incomplete answer must not return answer_status=ok.
+   - Retry once with the remaining safe model budget (or a continuation prompt) and merge
+     only after citation validation; otherwise show an explicit incomplete-answer state.
+   - Keep a concise-answer instruction so using a larger maximum does not force every
+     normal answer to consume that maximum.
+5. P0 regression tests
+   - This exact query must include 消防安全設備檢修及申報辦法第5條 and the relevant
+     消防法 provision within top_k=8.
+   - No single administrative direction should consume most evidence slots when distinct
+     governing sources are available.
+   - Simulated done_reason=length and mid-sentence output must be retried or marked
+     incomplete, never accepted as ok.
+   - Each frontend model option must resolve to its configured effective output budget.
+
+P1
+1. Preserve hierarchical provision identity during parsing/ingestion, including parent
+   section and subsection paths, so repeated labels such as 5. remain distinguishable.
+2. Group evidence cards by law in the UI while retaining separate [N] citations for each
+   substantive provision; clarify whether top_k counts provisions or law groups.
+3. Add dynamic local-model capability discovery through Ollama /api/show, cache model_info
+   context_length, and compare it with the configured output cap. Cloud-model limits keep
+   an explicit versioned configuration fallback when capability metadata is unavailable.
+4. Display the selected model, effective output budget, and incomplete/retry status in
+   diagnostics so future truncation can be explained from saved response metadata.
+
+P0/P1 implementation result (2026-09-16)
+
+- Broad-topic answer retrieval now uses a 24-result bounded candidate pool, normalized
+  law-title intent, distinct-law-first selection, an initial maximum of two provisions
+  per law, and explicit reservation/promotion of the directly governing regulation and
+  parent act without changing the displayed retrieval scores.
+- Real-corpus result for「請再次說明消防安全設備檢修申報相關規定」:
+  [1] 消防安全設備檢修及申報辦法第5條, [2] 消防法第六條, with only two
+  provisions from 消防機關受理消防安全設備檢修申報及複查注意事項 in top 8.
+- Administrative-direction parsing now preserves 一、/（一）/1. hierarchy in heading;
+  existing database rows gain this metadata only when their source version is reingested.
+- The single 512-token answer cap was replaced with selected-model profiles:
+  gemma4:e2b context/output 8192/2048, gemma4:e4b 16384/4096, and
+  gemma4:31b-cloud 262144/8192. Effective output is capped by remaining context after
+  the estimated prompt and a 512-token safety margin; unknown models use 4096/1024.
+- Local /api/show capability discovery is cached and constrains configured context.
+  Completion metadata is retained; done_reason=length or a short dangling ending retries
+  once with a concise prompt and becomes answer_status=incomplete if still unfinished.
+- Streamlit groups local evidence by law while retaining independent [N] anchors and
+  displays model, effective output cap, done reason, and retry count diagnostics.
+- Live connectivity/capability probe: e2b HTTP 200, architecture context 131072;
+  e4b HTTP 200, architecture context 131072; 31b-cloud HTTP 200, architecture context
+  262144. All three tiny chat probes completed with done_reason=stop.
+- Validation: 76 offline tests passed; changed-file Ruff and git diff --check passed.
+  Frontend guide v1.4 (DOCX/PDF) and system manual PDF were rebuilt. All 15 PDF pages
+  were visually inspected; DOCX ZIP/OOXML structure, 81 paragraphs, 3 tables, and 3
+  embedded images passed. Direct DOCX rasterization remains unavailable because the
+  bundled runtime has no LibreOffice soffice.exe; the limitation is recorded in
+  docs/DEV_NOTES.md.

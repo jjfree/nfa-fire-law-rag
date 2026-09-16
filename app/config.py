@@ -39,7 +39,20 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = Field(default=180.0, ge=1.0, le=900.0)
     llm_temperature: float = Field(default=0.1, ge=0.0, le=2.0)
     llm_think: bool = False
-    llm_max_output_tokens: int = Field(default=512, ge=64, le=4096)
+    # Unknown/custom models use this conservative fallback. Supported frontend
+    # models have explicit context/output profiles below.
+    llm_max_output_tokens: int = Field(default=1024, ge=64, le=32768)
+    llm_e2b_context_tokens: int = Field(default=8192, ge=4096, le=131072)
+    llm_e2b_max_output_tokens: int = Field(default=2048, ge=64, le=32768)
+    llm_e4b_context_tokens: int = Field(default=16384, ge=4096, le=131072)
+    llm_e4b_max_output_tokens: int = Field(default=4096, ge=64, le=32768)
+    llm_31b_cloud_context_tokens: int = Field(default=262144, ge=4096, le=1048576)
+    llm_31b_cloud_max_output_tokens: int = Field(default=8192, ge=64, le=65536)
+    llm_unknown_context_tokens: int = Field(default=4096, ge=1024, le=1048576)
+    llm_context_safety_tokens: int = Field(default=512, ge=64, le=8192)
+    llm_capability_discovery_enabled: bool = True
+    llm_capability_timeout_seconds: float = Field(default=5.0, ge=0.5, le=30.0)
+    llm_completion_retry_limit: int = Field(default=1, ge=0, le=2)
 
     # Web search is a bounded, optional fallback. It requires an Ollama hosted
     # web-search API key; local Gemma remains the answer generator.

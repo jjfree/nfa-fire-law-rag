@@ -53,3 +53,9 @@ Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8501/_stcore/health
 - 已檢查 58 個受版本控制的文字檔（Python、批次檔、Markdown、JSON、TOML、YAML、HTML 等），均可用 UTF-8 解碼，沒有 BOM 或 Unicode replacement character。
 - repository 既有部分文字檔混用 LF/CRLF；除 Windows `.bat` 外，不要因單一終端機問題任意重整全庫換行，以免產生無關 diff。
 - 前端中文應由 UTF-8 的 Python/Markdown 與產生器輸出；批次檔只在終端機輸出 ASCII，中文品牌顯示責任交給瀏覽器與文件。
+
+## 2026-09-16：bundled runtime 無法直接轉圖 DOCX
+
+文件技能的 `render_docx.py` 需要 bundled LibreOffice `soffice.exe`，但目前 workspace dependencies 未提供 LibreOffice，且工具會回報 `LibreOffice soffice.exe was not found on PATH`。依專案規則，不應改用使用者自行安裝的桌面 LibreOffice，也不要為例行驗證安裝系統軟體。
+
+目前的可重現替代驗證為：使用 bundled Python 執行 `scripts\build_frontend_user_guide.py --format all`，以同一份 Markdown 與產生器建立 DOCX/PDF；對 PDF 的每一頁使用 bundled Poppler 轉成 PNG 並逐頁目視檢查，同時以 `python-docx` 與 ZIP 測試檢查 DOCX 段落、表格、內嵌圖片及 OOXML 壓縮檔完整性。若未來 workspace dependencies 提供 bundled LibreOffice，再恢復 `render_docx.py` 的直接 DOCX 視覺驗證，不要每次重新搜尋或嘗試使用系統版 `soffice.exe`。

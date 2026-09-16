@@ -204,3 +204,55 @@ def test_composite_place_query_keeps_statute_and_inclusion_evidence(monkeypatch)
     assert (results[1].law_title, results[1].article_label) == ("消防法", "第6條")
     assert results[1].hybrid_score == 0.14
     assert len(results) == 8
+
+
+def test_broad_topic_query_reserves_regulation_parent_act_and_diversity(monkeypatch):
+    from app import rerank
+
+    query = "請再次說明消防安全設備檢修申報相關規定"
+    directions = []
+    for index in range(1, 6):
+        hit = _hit(index, f"消防機關受理檢修申報程序 {index}")
+        hit.law_id = 10
+        hit.law_title = "消防機關受理消防安全設備檢修申報及複查注意事項"
+        hit.article_label = f"{index}."
+        hit.hybrid_score = 0.8 - index / 100
+        directions.append(hit)
+
+    others = []
+    for index in range(6, 16):
+        hit = _hit(index, f"其他相關規定 {index}")
+        hit.law_id = index
+        hit.law_title = f"相關法規{index}"
+        hit.hybrid_score = 0.7 - index / 100
+        others.append(hit)
+
+    regulation = _hit(16, "管理權人應依期限辦理消防安全設備檢修及申報。")
+    regulation.law_id = 16
+    regulation.law_title = "消防安全設備檢修及申報辦法"
+    regulation.article_label = "第5條"
+    regulation.hybrid_score = 0.42
+
+    parent = _hit(18, "管理權人應定期檢修消防安全設備；其期限及方式由辦法定之。")
+    parent.law_id = 18
+    parent.law_title = "消防法"
+    parent.article_label = "第六條"
+    parent.hybrid_score = 0.40
+
+    base = [*directions, *others, regulation, parent]
+    monkeypatch.setattr(rerank, "get_settings", lambda: _settings())
+    monkeypatch.setattr(
+        rerank,
+        "hybrid_search",
+        lambda search_query, top_k, law_title: base[:top_k],
+    )
+
+    results = rerank.retrieve_answer_hits(query, top_k=8)
+
+    assert (results[0].law_title, results[0].article_label) == (
+        "消防安全設備檢修及申報辦法",
+        "第5條",
+    )
+    assert (results[1].law_title, results[1].article_label) == ("消防法", "第六條")
+    assert sum(hit.law_id == 10 for hit in results) <= 2
+    assert len(results) == 8

@@ -246,6 +246,10 @@ bounded, and the PostgreSQL/Docker path remains optional and is not executed.
 
 - Predictable top-k hybrid retrieval with article hints, optional law-title filter,
   current-version filtering, score components, and provenance in every hit.
+- Implemented follow-up: broad topic queries use a bounded candidate pool, reserve
+  directly governing regulations and parent acts, and diversify evidence by law before
+  filling by original relevance. Administrative item hierarchy is retained on future
+  ingestion so repeated labels remain independently citable.
 
 **Affected files**
 
@@ -278,6 +282,9 @@ bounded, and the PostgreSQL/Docker path remains optional and is not executed.
 - Stable health/search/article/law/version interfaces whose results expose law
   title, article/chunk, source URL, version, and enough metadata for answer-layer
   citations. Admin crawl remains local/protected by default.
+- Implemented answer hardening: model-specific context/output profiles, one bounded
+  retry after length truncation, explicit incomplete status, and persisted completion
+  diagnostics for UI/API consumers.
 
 **Affected files**
 

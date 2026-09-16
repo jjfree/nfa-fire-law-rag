@@ -13,8 +13,12 @@ from functools import lru_cache
 
 from app.answer import AnswerGenerationError, OllamaAnswerer
 from app.config import get_settings
-from app.query_analysis import extract_focus_terms, split_query_facets
-from app.search import SearchHit, hybrid_search
+from app.query_analysis import (
+    extract_focus_terms,
+    is_broad_regulatory_query,
+    split_query_facets,
+)
+from app.search import SearchHit, _matched_law_titles, hybrid_search
 
 _COMPARISON_MARKERS = ("差異", "不同", "區別", "比較", "各自", "分別", "有何差別")
 _SCOPE_MARKERS = ("權限", "職權", "業務範圍", "執業範圍", "可以做", "能做", "得從事")
@@ -131,7 +135,7 @@ def _complete_rerank(prompt: str, model: str) -> str:
     is_cloud_model = model.endswith(("-cloud", ":cloud"))
     base_url = settings.llm_cloud_base_url if is_cloud_model else settings.llm_base_url
     api_key = settings.ollama_api_key if is_cloud_model else ""
-    return OllamaAnswerer(
+    completion = OllamaAnswerer(
         base_url=base_url,
         model=model,
         timeout_seconds=settings.reranker_timeout_seconds,
@@ -140,6 +144,7 @@ def _complete_rerank(prompt: str, model: str) -> str:
         max_output_tokens=settings.reranker_max_output_tokens,
         api_key=api_key,
     ).complete(prompt)
+    return completion.content if hasattr(completion, "content") else completion
 
 
 class OllamaReranker:
@@ -164,15 +169,17 @@ class OllamaReranker:
         return ordered[:top_k]
 
 
-def _evidence_key(hit: SearchHit) -> tuple[int, str | int]:
-    """Group repeated chunks from the same labelled legal provision."""
+def _evidence_key(hit: SearchHit) -> tuple[int, str | int, str, str]:
+    """Deduplicate identical evidence without collapsing repeated section labels."""
     label = "".join((hit.article_label or "").split())
-    return (hit.law_id, label or hit.chunk_id)
+    heading = "".join((hit.heading or "").split())
+    content = "".join(hit.content.split())
+    return (hit.law_id, label or hit.chunk_id, heading, content)
 
 
 def _dedupe_provisions(hits: list[SearchHit]) -> list[SearchHit]:
     unique: list[SearchHit] = []
-    seen: set[tuple[int, str | int]] = set()
+    seen: set[tuple[int, str | int, str, str]] = set()
     for hit in hits:
         key = _evidence_key(hit)
         if key in seen:
@@ -183,17 +190,28 @@ def _dedupe_provisions(hits: list[SearchHit]) -> list[SearchHit]:
 
 
 def _select_diverse_provisions(hits: list[SearchHit], top_k: int) -> list[SearchHit]:
-    """Prefer distinct laws first, then fill remaining slots by provision rank."""
+    """Prefer distinct laws, then allow two per law before an unrestricted fill."""
     unique = _dedupe_provisions(hits)
     selected: list[SearchHit] = []
-    selected_keys: set[tuple[int, str | int]] = set()
+    selected_keys: set[tuple[int, str | int, str, str]] = set()
     seen_laws: set[int] = set()
+    diversity_slots = min(top_k, max(1, (top_k * 3 + 3) // 4))
     for hit in unique:
         if hit.law_id in seen_laws:
             continue
         selected.append(hit)
         selected_keys.add(_evidence_key(hit))
         seen_laws.add(hit.law_id)
+        if len(selected) == diversity_slots:
+            break
+    law_counts = {hit.law_id: 1 for hit in selected}
+    for hit in unique:
+        key = _evidence_key(hit)
+        if key in selected_keys or law_counts.get(hit.law_id, 0) >= 2:
+            continue
+        selected.append(hit)
+        selected_keys.add(key)
+        law_counts[hit.law_id] = law_counts.get(hit.law_id, 0) + 1
         if len(selected) == top_k:
             return selected
     for hit in unique:
@@ -225,7 +243,9 @@ def _is_primary_statute(hit: SearchHit) -> bool:
 
 
 def _reserve_candidate(
-    selected: list[SearchHit], selected_keys: set[tuple[int, str | int]], candidate: SearchHit
+    selected: list[SearchHit],
+    selected_keys: set[tuple[int, str | int, str, str]],
+    candidate: SearchHit,
 ) -> None:
     key = _evidence_key(candidate)
     if key in selected_keys:
@@ -276,6 +296,11 @@ def _retrieve_with_facet_coverage(
     selected = _select_diverse_provisions(base, top_k)
     selected_keys = {_evidence_key(hit) for hit in selected}
 
+    direct_titles = set(_matched_law_titles(query, [hit.law_title for hit in base]))
+    direct_regulation = next((hit for hit in base if hit.law_title in direct_titles), None)
+    if direct_regulation is not None:
+        _reserve_candidate(selected, selected_keys, direct_regulation)
+
     # A long composite query can rank many administrative directions ahead of
     # the governing act. Keep the best matching parent statute when one is in
     # the bounded candidate set; this is authority-aware, not title-specific.
@@ -307,8 +332,14 @@ def _retrieve_with_facet_coverage(
 
     # Evidence order is separate from the raw retrieval score: direct object
     # coverage comes first, followed by the governing statute when distinct.
-    _promote_focus_evidence(selected, focus_terms)
-    if primary_statute is not None:
+    if direct_regulation is not None:
+        _promote_candidate(selected, direct_regulation, target_index=0)
+    else:
+        _promote_focus_evidence(selected, focus_terms)
+    if primary_statute is not None and (
+        direct_regulation is None
+        or _evidence_key(primary_statute) != _evidence_key(direct_regulation)
+    ):
         _promote_candidate(selected, primary_statute, target_index=1)
     return selected
 
@@ -324,7 +355,11 @@ def retrieve_answer_hits(
         and is_reranker_query(query)
     )
     if not should_rerank:
-        if extract_focus_terms(query) or len(split_query_facets(query)) > 1:
+        if (
+            extract_focus_terms(query)
+            or len(split_query_facets(query)) > 1
+            or is_broad_regulatory_query(query)
+        ):
             return _retrieve_with_facet_coverage(query, top_k, law_title)
         return hybrid_search(query, top_k=top_k, law_title=law_title)
 

@@ -29,6 +29,24 @@ def test_split_points_ignores_preamble():
     assert [c.article_label for c in chunks] == ["一、", "二、"]
 
 
+def test_split_hierarchical_directions_preserves_parent_section_path():
+    chunks = split_legal_text(
+        "一、受理申報\n"
+        "1.審核申報文件。\n"
+        "二、複查工作\n"
+        "（四）注意事項\n"
+        "5.複查文件應保存歸檔。\n"
+        "（五）其他事項\n"
+        "5.特殊設施應由技術人員配合。"
+    )
+
+    assert [chunk.article_label for chunk in chunks] == ["1.", "5.", "5."]
+    assert chunks[0].heading == "一、受理申報"
+    assert chunks[1].heading == "二、複查工作 / （四）注意事項"
+    assert chunks[2].heading == "二、複查工作 / （五）其他事項"
+    assert "（五）其他事項" not in chunks[1].content
+
+
 def test_parse_realistic_legacy_print_view():
     html = Path("tests/fixtures/law_legacy_print.html").read_text(encoding="utf-8")
     law = parse_law_html(html, "fallback should not win")
