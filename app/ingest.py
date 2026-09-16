@@ -17,11 +17,48 @@ from app.crawler.fetch import (
     HttpFetcher,
 )
 from app.crawler.nfa_urls import build_print_url, extract_lsid
-from app.parser import append_attachment_text, metadata_json, parse_law_html
+from app.parser import (
+    PARSER_REVISION,
+    append_attachment_text,
+    metadata_json,
+    parse_law_html,
+    parse_stored_law_text,
+)
 
 
 class IngestError(RuntimeError):
     pass
+
+
+def _load_metadata(value: str | None) -> dict[str, object]:
+    if not value:
+        return {}
+    try:
+        loaded = json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def _parser_revision(metadata: dict[str, object]) -> int | None:
+    value = metadata.get("parser_revision")
+    if isinstance(value, bool):
+        return None
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _current_parser_revision(metadata: dict[str, object]) -> bool:
+    return _parser_revision(metadata) == PARSER_REVISION
+
+
+def _embedding_inputs(title: str, chunks) -> list[str]:
+    return [
+        f"{title}\n{chunk.heading or ''}\n{chunk.article_label or ''}\n{chunk.content}"
+        for chunk in chunks
+    ]
 
 
 def _validate_source(url: str) -> None:
@@ -202,12 +239,9 @@ def ingest_link(
                         LawVersion.is_current.is_(True),
                     )
                 )
-            cached_metadata = None
-            if cached_current is not None and cached_current.metadata_json:
-                try:
-                    cached_metadata = json.loads(cached_current.metadata_json)
-                except (TypeError, json.JSONDecodeError):
-                    cached_metadata = None
+            cached_metadata = _load_metadata(
+                cached_current.metadata_json if cached_current is not None else None
+            )
             cached_attachments = cached_metadata and cached_metadata.get("attachments")
             if (
                 cached_current is not None
@@ -217,6 +251,17 @@ def ingest_link(
                     or cached_current.raw_text.startswith(parsed.text + "\n\n附件：")
                 )
             ):
+                if not _current_parser_revision(cached_metadata):
+                    return {
+                        "status": "reprocess_required",
+                        "law_id": cached_law.id,
+                        "title": cached_law.title,
+                        "version": cached_current.version_no,
+                        "stored_parser_revision": _parser_revision(cached_metadata),
+                        "required_parser_revision": PARSER_REVISION,
+                        "retrieved_url": page.url,
+                        "fallback_failures": failed_urls,
+                    }
                 cached_metadata = dict(cached_metadata)
                 cached_attachments = dict(cached_attachments)
                 cached_attachments.setdefault("skipped", [])
@@ -243,12 +288,7 @@ def ingest_link(
         parsed.metadata["attachments"] = attachment_report
 
         embedder = get_embedder()
-        vectors = embedder.embed(
-            [
-                f"{parsed.title}\n{c.heading or ''}\n{c.article_label or ''}\n{c.content}"
-                for c in parsed.chunks
-            ]
-        )
+        vectors = embedder.embed(_embedding_inputs(parsed.title, parsed.chunks))
 
         with session_scope() as db:
             law = db.scalar(select(Law).where(Law.source_key == link.source_key))
@@ -261,18 +301,31 @@ def ingest_link(
                 # Preserve the human-facing law URL rather than replacing it with print view.
                 law.source_url = link.url
 
-            existing = db.scalar(
+            existing_current = db.scalar(
                 select(LawVersion).where(
                     LawVersion.law_id == law.id,
                     LawVersion.content_hash == parsed.content_hash,
+                    LawVersion.is_current.is_(True),
                 )
             )
-            if existing:
+            if existing_current:
+                existing_metadata = _load_metadata(existing_current.metadata_json)
+                if not _current_parser_revision(existing_metadata):
+                    return {
+                        "status": "reprocess_required",
+                        "law_id": law.id,
+                        "title": law.title,
+                        "version": existing_current.version_no,
+                        "stored_parser_revision": _parser_revision(existing_metadata),
+                        "required_parser_revision": PARSER_REVISION,
+                        "retrieved_url": page.url,
+                        "fallback_failures": failed_urls,
+                    }
                 return {
                     "status": "unchanged",
                     "law_id": law.id,
                     "title": law.title,
-                    "version": existing.version_no,
+                    "version": existing_current.version_no,
                     "metadata": parsed.metadata,
                     "retrieved_url": page.url,
                     "fallback_failures": failed_urls,
@@ -363,6 +416,11 @@ def _crawl_one_category(
         "unchanged": sum(
             1 for r in results if r.get("result", {}).get("status") == "unchanged"
         ),
+        "reprocess_required": sum(
+            1
+            for r in results
+            if r.get("result", {}).get("status") == "reprocess_required"
+        ),
         "errors": sum(1 for r in results if "error" in r),
         "results": results,
     }
@@ -416,5 +474,99 @@ def crawl_categories(category_urls: list[str], max_laws: int | None = None) -> d
         "selected": sum(item["selected"] for item in categories),
         "inserted": sum(item["inserted"] for item in categories),
         "unchanged": sum(item["unchanged"] for item in categories),
+        "reprocess_required": sum(item["reprocess_required"] for item in categories),
         "errors": sum(item["errors"] for item in categories),
+    }
+
+
+def reprocess_current_laws(*, apply: bool = False, law_ids: list[int] | None = None) -> dict:
+    """Rebuild current derived chunks from stored raw text, without crawling.
+
+    Dry-run is the default. Applying keeps legal ``version_no`` and history intact,
+    replacing only each selected current version's parser-derived chunks, embeddings,
+    metadata/hash, and current-only FTS entries in one database transaction.
+    """
+    from sqlalchemy import select
+
+    from app.db import embedding_to_storage, rebuild_fts, session_scope
+    from app.embedding import get_embedder
+    from app.models import Law, LawChunk, LawVersion
+
+    requested_ids = set(law_ids or [])
+    report_items: list[dict[str, object]] = []
+    errors: list[dict[str, object]] = []
+    with session_scope() as db:
+        statement = (
+            select(LawVersion, Law)
+            .join(Law, Law.id == LawVersion.law_id)
+            .where(LawVersion.is_current.is_(True))
+            .order_by(Law.id)
+        )
+        rows = db.execute(statement).all()
+        embedder = None
+        for version, law in rows:
+            if requested_ids and law.id not in requested_ids:
+                continue
+            old_metadata = _load_metadata(version.metadata_json)
+            old_revision = _parser_revision(old_metadata)
+            if old_revision is not None and old_revision >= PARSER_REVISION:
+                continue
+
+            parsed = parse_stored_law_text(version.raw_text, law.title, old_metadata)
+            if not parsed.chunks:
+                errors.append(
+                    {
+                        "law_id": law.id,
+                        "title": law.title,
+                        "version": version.version_no,
+                        "error": "No legal chunks detected in stored raw text",
+                    }
+                )
+                continue
+            item: dict[str, object] = {
+                "law_id": law.id,
+                "title": law.title,
+                "version": version.version_no,
+                "stored_parser_revision": old_revision,
+                "required_parser_revision": PARSER_REVISION,
+                "old_chunks": len(version.chunks),
+                "new_chunks": len(parsed.chunks),
+                "hash_changed": version.content_hash != parsed.content_hash,
+            }
+            report_items.append(item)
+            if not apply:
+                continue
+
+            if embedder is None:
+                embedder = get_embedder()
+            vectors = embedder.embed(_embedding_inputs(law.title, parsed.chunks))
+            for old_chunk in list(version.chunks):
+                db.delete(old_chunk)
+            db.flush()
+            for chunk, vector in zip(parsed.chunks, vectors, strict=True):
+                db.add(
+                    LawChunk(
+                        version_id=version.id,
+                        seq=chunk.seq,
+                        article_label=chunk.article_label,
+                        heading=chunk.heading,
+                        content=chunk.content,
+                        embedding=embedding_to_storage(vector),
+                    )
+                )
+            version.content_hash = parsed.content_hash
+            version.metadata_json = metadata_json(parsed.metadata)
+
+        if apply and report_items:
+            db.flush()
+            rebuild_fts(db)
+
+    return {
+        "mode": "apply" if apply else "dry-run",
+        "parser_revision": PARSER_REVISION,
+        "selected_law_ids": sorted(requested_ids),
+        "affected": len(report_items),
+        "errors": len(errors),
+        "items": report_items,
+        "error_items": errors,
     }

@@ -84,7 +84,7 @@ Ollama/Gemma 是回答層，不是檢索層的必要條件。Ollama 不可用時
 
 ### 3.3 解析、chunk 與 hash
 
-Parser 會清除列印時間、頁尾、導覽與系統提示等動態 chrome，再擷取法規名稱、發布/施行/修正日期、主管機關與法規狀態。正式法規以 `第 X 條` 切割；行政規則或附件則可依 `一、二、...`、`（一）` 或阿拉伯數字項次切割。階層式行政規則會把上層節點路徑保存於 heading，使不同章節中重複的 `5.` 等標籤仍可區分。每個 chunk 保存順序、條號或項次、標題與完整文字；既有資料須在後續增量更新或重建後才會取得新 heading。
+Parser 會清除列印時間、頁尾、導覽與系統提示等動態 chrome，再擷取法規名稱、發布/施行/修正日期、主管機關與法規狀態。正式法規以 `第 X 條` 切割，並辨識條文段落行首的「第六條第一項所定」等交叉引用，避免誤切成另一條；行政規則或附件則可依 `一、二、...`、`（一）` 或阿拉伯數字項次切割。階層式行政規則會把上層節點路徑保存於 heading，使不同章節中重複的 `5.` 等標籤仍可區分。每個 chunk 保存順序、條號或項次、標題與完整文字。version metadata 另保存 `parser_revision`，用來判斷既有 chunks 是否需要受控重建，不把 parser 改版誤認為法規內容修正。
 
 `content_hash` 只對穩定的法規內容與重要 metadata 計算 SHA-256，刻意排除每次抓取都會變動的列印時間。因此同一法規內容未變更時不會重複新增版本，也不會重做 embedding。
 
@@ -93,11 +93,13 @@ Parser 會清除列印時間、頁尾、導覽與系統提示等動態 chrome，
 | 情況 | 入庫結果 |
 |---|---|
 | 找不到相同 `source_key` | 建立 `Law`、版本 1、chunks、embedding 與 FTS5 |
-| 相同 identity 且 `content_hash` 不變 | 回報 `unchanged`，保留原 current version |
+| 相同 identity、現行 `content_hash` 與 `parser_revision` 均不變 | 回報 `unchanged`，保留原 current version |
+| 來源未變但現行 `parser_revision` 落後 | 回報 `reprocess_required`，不自動增加法規版本 |
 | 相同 identity 但內容變更 | 舊版 `is_current=false`，新增 version_no、chunks、embedding，更新 FTS5 |
+| 新內容與某個非現行歷史 hash 相同 | 仍新增下一個 version_no，保留完整時間序，不重新啟用舊列 |
 | 單一附件失敗 | 保存錯誤/跳過原因到 version metadata，不中斷其他法規 |
 
-一般更新先做小量 probe，再做 `--max-laws` 小量 crawl，確認結果後才執行完整增量同步。例行測試不得對真實 local database 做 destructive setup，也不應在未確認網站可達性時直接完整 crawl。
+一般更新先做小量 probe，再做 `--max-laws` 小量 crawl，確認結果後才執行完整增量同步。crawl 不會刪除歷史版本；若來源內容回復成先前文字，系統會建立新的時間序版本，避免 current 指標停留在錯誤版本。例行測試不得對真實 local database 做 destructive setup，也不應在未確認網站可達性時直接完整 crawl。
 
 ## 4. 資料模型與可追溯性
 
@@ -188,7 +190,23 @@ API 要長駐執行時，請保留該視窗；停止可按 `Ctrl+C`。`/v1/admin
 
 `probe` 不需資料庫與 embedding，會回報 `LSID`、retrieved URL、chunk 數、首末條號、metadata、content hash 與附件 URL，適合先確認站台格式。`crawl` 是增量操作，未變更法規不會建立新版本。
 
-### 6.5 啟動 Streamlit 前端
+### 6.5 Parser 升版後重建現行 chunks
+
+parser/chunk 規則升版後，先執行 dry-run；此步驟不連網也不寫入資料：
+
+```powershell
+.venv\Scripts\python.exe -m app.cli reprocess-current
+```
+
+輸出會列出法規 ID、版本、舊/新 parser revision、chunk 數及 hash 是否變動。確認清單後，先複製備份 `data\nfa_fire_law.db`，再套用：
+
+```powershell
+.venv\Scripts\python.exe -m app.cli reprocess-current --apply
+```
+
+如只處理特定法規，可重複使用 `--law-id`。套用作業在單一資料庫交易中，僅重建現行版本的 chunks、embedding、metadata/hash 與 current-only FTS；不改 `version_no`，也不刪除或重新啟用歷史版本。若 embedding provider 已改變，不應把本命令當成跨 provider migration，仍須先確認整庫向量相容性。
+
+### 6.6 啟動 Streamlit 前端
 
 方法一：雙擊 `scripts\start_streamlit.bat`。啟動器會檢查 `.venv` 與 Streamlit，確認 `8501` port，僅停止本 repository 自己留下的舊 Streamlit process，等待 health endpoint 後開啟瀏覽器。
 
@@ -204,7 +222,7 @@ API 要長駐執行時，請保留該視窗；停止可按 `Ctrl+C`。`/v1/admin
 
 開啟 `http://127.0.0.1:8501`。若只使用 UI，仍建議先完成 `init-db` 與至少一次 crawl；UI 啟動時會自動初始化 schema，但不會自動爬取法規。
 
-### 6.6 API、MCP 與評估入口
+### 6.7 API、MCP 與評估入口
 
 常用 API：
 
@@ -273,6 +291,7 @@ MCP 使用 stdio；在 MCP client 設定中以 repository 內的 Python 啟動�
 | Cloud/web fallback 不可用 | 確認 `OLLAMA_API_KEY`、允許網域與 HTTPS；未設定時屬預期的 unavailable 狀態 |
 | Streamlit port 被占用 | 關閉占用 `8501` 的應用程式，或修改啟動命令的 port；不要任意終止不相關 process |
 | 切換 embedding provider | 使用新的 `DATABASE_URL` 或受控 re-embedding 流程，先備份 SQLite，避免混用向量 |
+| crawl 顯示 `reprocess_required` | 先執行 `reprocess-current` dry-run，備份 SQLite 後再以 `--apply` 重建現行衍生資料 |
 
 ## 9. 文件維護與變更紀錄
 
@@ -280,6 +299,7 @@ MCP 使用 stdio；在 MCP client 設定中以 repository 內的 Python 啟動�
 
 | 日期 | 內容 |
 |---|---|
+| 2026-09-16 | 加入 parser revision、條文交叉引用防誤切、歷史 hash 回復保護，以及 dry-run 優先的 `reprocess-current` 工作流程 |
 | 2026-09-16 | 加入跨法規主題覆蓋、證據來源多樣化、階層項次、模型別 token profile 與截斷偵測/重試 |
 | 2026-09-16 | 統一產品名稱為「台灣消防法規 RAG」，來源說明改用中性名稱 |
 | 2026-09-16 | 複合包含問題先列直接對象條文，再列相關母法，並保留原始檢索分數 |

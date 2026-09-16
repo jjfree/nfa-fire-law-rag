@@ -181,21 +181,31 @@ bounded, and the PostgreSQL/Docker path remains optional and is not executed.
 
 **Output**
 
-- Idempotent ingestion: unchanged content remains unchanged, changed content creates
-  a new current version, old versions remain queryable for audit, and each chunk
-  points to its version and law source.
+- Idempotent ingestion: unchanged content and parser revision remain unchanged;
+  changed source content creates a new current version; old versions remain queryable
+  for audit; and each chunk points to its version and law source.
+- Parser-only changes return `reprocess_required` and use a dry-run-first offline
+  reprocessing command. Reprocessing keeps `version_no` and history intact while
+  rebuilding only current derived chunks, embeddings, metadata/hash, and FTS.
+- Content that returns to a historical hash creates a new chronological version rather
+  than reactivating the historical row or leaving a stale current pointer.
 
 **Affected files**
 
 - `app/ingest.py`
+- `app/parser.py`
+- `app/cli.py`
 - `app/models.py`
 - `tests/test_ingest_probe.py`
-- New focused version/idempotency tests if needed
+- `tests/test_ingest_versioning.py`
 
 **Validation**
 
 - In a temporary database, ingest the same fixture twice and assert one version;
   change one legal body and assert a new version with the old version retained.
+- Assert that parser revision mismatch is not reported as unchanged, dry-run writes
+  nothing, apply keeps version identity, and historical-hash reversion creates the
+  next chronological version.
 - Verify FTS rebuild excludes old versions and attachment skip reports are persisted.
 
 **Rollback**

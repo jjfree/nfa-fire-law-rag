@@ -101,6 +101,16 @@ future capability, **可沿用** means keep as the current extension point, and
 - Administrative-direction parsing preserves parent section/subsection headings for
   repeated item labels on newly ingested versions. The Streamlit evidence view groups
   cards by law while retaining stable per-provision citation numbers.
+- Version metadata records an explicit parser revision. Incremental crawl returns
+  `reprocess_required` instead of silently accepting stale derived chunks, and a
+  dry-run-first `reprocess-current` CLI can rebuild current chunks, embeddings,
+  metadata/hash, and FTS without changing legal version numbers or history.
+- Hash matches are considered unchanged only for the current version. Source content
+  that reverts to a historical hash creates a new chronological current version instead
+  of reactivating an old row or leaving the current pointer stale.
+- Formal-article parsing keeps line-leading cross-references such as
+  `第六條第一項所定...` inside the current provision. The local corpus was rebuilt at
+  parser revision 3; `消防法` Article 9 now contains its complete 655-character text.
 - FastAPI health/search/article/law/version/admin endpoints and MCP tools exist.
 - A local Streamlit UI supports natural-language queries, law filtering, result
   counts, current-version evidence, scores, source links, and clickable answer
@@ -112,7 +122,7 @@ future capability, **可沿用** means keep as the current extension point, and
 
 ### Partially completed
 
-- Incremental sync exists at the law/version/hash level, but scheduling, durable
+- Incremental sync exists at the law/version/hash/parser-revision level, but scheduling, durable
   crawl manifests, resumability, and richer update reporting are not yet a full
   operational workflow.
 - Metadata and provenance are stored, and the local UI displays retrieval evidence;
@@ -184,7 +194,7 @@ no live crawl was run.
 | NumPy | 2.5.3; float32 array and norm calculation passed |
 | Streamlit UI dependency | `1.63.0` installed in repository `.venv` |
 | Ollama hosted web-search key | Configured only in ignored local `.env`; live cloud/web request was not run |
-| repository tests | `76 passed, 12 warnings` after broad-topic diversity, model-token, truncation-retry, parser hierarchy, citation, and UI grouping changes |
+| repository tests | `83 passed, 30 warnings` after parser revisioning, cross-reference parsing, source-change/history handling, controlled reprocessing, and test-DB isolation changes |
 | Ruff (changed Python files) | Passed |
 | Ruff (whole repository) | Three pre-existing findings remain: one `B008` in `app/cli.py` and import ordering in two crawler modules |
 

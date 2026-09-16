@@ -1,10 +1,16 @@
 import json
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
 from app.crawler.categories import category_urls_for_codes
-from app.ingest import crawl_categories, crawl_category, probe_category
+from app.ingest import (
+    crawl_categories,
+    crawl_category,
+    probe_category,
+    reprocess_current_laws,
+)
 
 app = typer.Typer(help="台灣消防法規 RAG management CLI")
 
@@ -60,6 +66,22 @@ def crawl_command(
         result = crawl_categories(category_urls, max_laws=max_laws)
     else:
         result = crawl_category(max_laws=max_laws)
+    typer.echo(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+
+
+@app.command("reprocess-current")
+def reprocess_current_command(
+    apply: Annotated[
+        bool,
+        typer.Option(help="Apply changes. Without this flag the command is a read-only dry-run."),
+    ] = False,
+    law_id: Annotated[
+        list[int] | None,
+        typer.Option(min=1, help="Limit processing; repeat --law-id as needed."),
+    ] = None,
+):
+    """Reparse stored current versions after a parser revision, without crawling."""
+    result = reprocess_current_laws(apply=apply, law_ids=law_id)
     typer.echo(json.dumps(result, ensure_ascii=False, indent=2, default=str))
 
 

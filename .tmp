@@ -246,3 +246,73 @@ P0/P1 implementation result (2026-09-16)
   embedded images passed. Direct DOCX rasterization remains unavailable because the
   bundled runtime has no LibreOffice soffice.exe; the limitation is recorded in
   docs/DEV_NOTES.md.
+
+Proposed P0/P1: parser revision and safe current-version reprocessing (2026-09-16)
+
+Observed evidence
+- A normal incremental crawl preserves historical law_versions and law_chunks, but the
+  attachment-aware fast path returns unchanged before recalculating the semantic hash.
+- 179 of 180 current local versions have attachment metadata and therefore take that
+  shortcut whenever the fetched body text is unchanged.
+- Parser-only improvements, including hierarchical administrative-direction headings,
+  consequently do not propagate to existing chunks during an ordinary unchanged crawl.
+- The same-hash lookup currently searches all historical versions. If a source reverts
+  to content matching a non-current version, returning unchanged would leave the wrong
+  version marked current.
+
+P0
+1. Add an explicit parser/chunk schema revision to version metadata.
+2. Require both unchanged source text and a matching parser revision before the fast
+   unchanged return. Report parser mismatches as reprocess_required rather than silently
+   changing legal-source version numbers.
+3. Treat a hash match as unchanged only when the matching version is current. If new
+   source content matches a historical non-current hash, insert a new chronological
+   version and preserve the prior history.
+4. Add deterministic offline regression tests for same-revision unchanged behavior,
+   parser-revision mismatch, source changes, historical-content reversion, and current
+   version/chunk preservation.
+
+P1
+1. Add a reprocess-current CLI workflow that reparses stored current raw_text without a
+   network crawl, regenerates chunks/embeddings, and rebuilds current-only FTS5.
+2. Make the command dry-run by default and require --apply for changes. Report affected
+   laws, old/new parser revisions, chunk counts, and hash changes.
+3. Keep law version_no unchanged for parser-only derivation changes, record the applied
+   parser revision in metadata, and perform each run transactionally.
+4. Document a database backup before --apply and clarify that retrieval/rerank changes
+   work immediately while parser changes require this controlled reprocessing step.
+5. Update the system manual source/PDF and project status; frontend guide DOCX/PDF are
+   intentionally unaffected because this change adds no Streamlit-visible workflow.
+
+Acceptance criteria
+- Existing legal-version history is never deleted or reactivated by crawl/reprocess.
+- An unchanged crawl with the current parser revision remains idempotent.
+- An older/missing parser revision is never silently reported as unchanged.
+- Historical hash reversion creates a new current version with the next version_no.
+- reprocess-current dry-run performs no writes; --apply changes only current chunks,
+  embeddings, metadata, semantic hash, and FTS entries.
+- Full offline pytest, focused Ruff, PDF build/inspection, and git diff checks pass before
+  commit and push.
+
+P0/P1 implementation result (2026-09-16)
+
+- Added parser_revision metadata and require both current hash and current parser revision
+  before returning unchanged. Older/missing revisions return reprocess_required.
+- Same-hash matching is now current-only. Content that matches a historical non-current
+  hash creates the next chronological version and does not reactivate history.
+- Added reprocess-current: read-only dry-run by default, --apply for transactional current
+  chunk/embedding/metadata/hash/FTS regeneration, and repeatable --law-id filtering.
+- Added safe test-wide in-memory database defaults so test collection order cannot touch
+  the developer's local SQLite database.
+- Fixed formal-article parsing so line-leading cross-references such as
+  第六條第一項所定 remain in the current article. This repaired 消防法第9條 from a
+  3-character label-only chunk to a complete 655-character provision.
+- Backed up and rebuilt the local corpus to parser revision 3: 180 laws, 181 total
+  versions, 180 current versions, 13,830 current chunks/FTS rows, zero duplicate-current
+  laws, zero test fixture laws, and SQLite integrity_check=ok.
+- Backup files (ignored local data): data/backups/nfa_fire_law-before-parser-r2-20260916.db
+  and data/backups/nfa_fire_law-before-parser-r3-20260916.db.
+- Validation: 83 offline tests passed; changed-file Ruff passed (with only the recorded
+  pre-existing app/cli.py B008 ignored); git diff --check passed. The regenerated system
+  manual PDF has 8 pages; all pages were rendered and visually inspected, and pypdf
+  confirmed the new reprocess-current, parser_revision, and cross-reference text.

@@ -81,7 +81,21 @@ python -m app.cli crawl
 .venv\Scripts\python.exe -m app.cli crawl --categories A001,A002,A003
 ```
 
-此命令仍依 `LSID`、版本與 content hash 判斷 unchanged；不變更既有版本，變更才新增 current version、chunks、FTS5 索引與 embedding。專案內的 `.codex/skills/nfa-incremental-crawl/SKILL.md` 也已將「請增量爬取A001/A002/A003」對應到此流程。
+此命令依 `LSID`、content hash 與 `parser_revision` 判斷結果；來源內容與 parser 版本均未變才回報 `unchanged`。來源內容變更時新增 current version 並保留歷史版本；只有 parser 規則升版時回報 `reprocess_required`，不把衍生資料調整誤記成法規新版本。專案內的 `.codex/skills/nfa-incremental-crawl/SKILL.md` 也已將「請增量爬取A001/A002/A003」對應到此流程。
+
+parser 升版後先執行不寫入資料的檢查：
+
+```powershell
+.venv\Scripts\python.exe -m app.cli reprocess-current
+```
+
+確認清單並備份 `data\nfa_fire_law.db` 後，才套用現行版本的 chunks、embedding、metadata/hash 與 FTS 重建：
+
+```powershell
+.venv\Scripts\python.exe -m app.cli reprocess-current --apply
+```
+
+可重複傳入 `--law-id 123` 限定法規。此流程不連線爬取、不改 `version_no`、不刪除或重新啟用歷史版本。
 
 完整 crawl 遇到 HTTP 403/429 會立即停止，不會持續重試；若網路政策更嚴格，可在 `.env` 增加 `CRAWL_DELAY_SECONDS`，例如 `5.0`。附件採串流下載，預設受 `MAX_ATTACHMENT_BYTES=25000000`（25 MB）與 `MAX_ATTACHMENT_PAGES=200` 限制；超過大小、頁數、沒有可搜尋文字或非 PDF 的檔案會記錄在回報的 `metadata.attachments.skipped`（含 URL 與原因），不會耗盡本機記憶體。不要用併發方式加速，也不要關閉 TLS 憑證驗證。
 
@@ -304,7 +318,7 @@ python -m pip install -e '.[postgres]'
 - `law_chunks`：以條文/行政規則點次切分，SQLite 保存 float32 embedding BLOB；PostgreSQL 保存 pgvector。
 - `law_chunks_fts`：SQLite FTS5 現行版本索引，另以 CJK character n-grams 提升中文查詢命中。
 
-版本策略：同一 `source_key` 若 hash 不變 → `unchanged`；hash 變更 → 舊版 `is_current=false`、新增新版並重新 embedding。
+版本策略：同一 `source_key` 的現行 hash 與 parser revision 均不變 → `unchanged`；來源內容變更 → 舊版 `is_current=false`、新增新版並重新 embedding；只有 parser revision 落後 → `reprocess_required`，由 `reprocess-current` 受控更新衍生 chunks。若來源內容回復成某個歷史 hash，仍建立新的時間序版本，不會把歷史列直接重新標成 current。
 
 ## 8. API 安全提醒
 

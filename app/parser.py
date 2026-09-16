@@ -7,6 +7,11 @@ from bs4 import BeautifulSoup
 
 from app.config import get_settings
 
+# Increment this when parsing or chunk identity changes in a way that requires
+# regenerating stored chunks/embeddings. It is deliberately separate from legal
+# source version_no: parser-only changes must not pretend that the law changed.
+PARSER_REVISION = 3
+
 
 @dataclass
 class ParsedChunk:
@@ -27,6 +32,7 @@ class ParsedLaw:
 
 CN_NUM = "一二三四五六七八九十百千萬〇○零兩壹貳參肆伍陸柒捌玖拾佰仟"
 ARTICLE_RE = re.compile(rf"^(第\s*[{CN_NUM}\d\-之]+\s*條(?:\s*之\s*[{CN_NUM}\d]+)?)\s*(.*)$")
+ARTICLE_REFERENCE_TAIL_RE = re.compile(rf"^第\s*[{CN_NUM}\d]+\s*項")
 CHAPTER_RE = re.compile(rf"^(第\s*[{CN_NUM}\d]+\s*章)\s*(.*)$")
 SECTION_RE = re.compile(rf"^(第\s*[{CN_NUM}\d]+\s*節)\s*(.*)$")
 POINT_RE = re.compile(rf"^([{CN_NUM}]+、)\s*(.*)$")
@@ -206,10 +212,16 @@ def split_legal_text(text: str) -> list[ParsedChunk]:
 
             match = ARTICLE_RE.match(line)
             if match:
+                # A wrapped paragraph can begin with a cross-reference such as
+                # 「第六條第一項所定...」. It belongs to the current article and
+                # must not be mistaken for a new 第六條 heading.
+                rest = match.group(2).strip()
+                if current_label is not None and ARTICLE_REFERENCE_TAIL_RE.match(rest):
+                    current.append(line)
+                    continue
                 flush_article()
                 current_label = _normalize_label(match.group(1))
                 current_heading = pending_heading
-                rest = match.group(2).strip()
                 current = [current_label if not rest else f"{current_label} {rest}"]
             elif current_label is not None:
                 current.append(line)
@@ -328,6 +340,7 @@ def parse_law_html(html: str, fallback_title: str = "") -> ParsedLaw:
     text = "\n".join(lines)
     title = _extract_title(soup, text, fallback_title)
     metadata = _extract_metadata(text)
+    metadata["parser_revision"] = PARSER_REVISION
     chunks = split_legal_text(text)
     digest = _semantic_hash(title, metadata, chunks, text)
     return ParsedLaw(title, text, metadata, digest, chunks)
@@ -335,6 +348,36 @@ def parse_law_html(html: str, fallback_title: str = "") -> ParsedLaw:
 
 def metadata_json(metadata: dict[str, object]) -> str:
     return json.dumps(metadata, ensure_ascii=False, sort_keys=True)
+
+
+def parse_stored_law_text(
+    raw_text: str,
+    title: str,
+    metadata: dict[str, object] | None = None,
+) -> ParsedLaw:
+    """Reparse persisted source/attachment text without a network request.
+
+    ``append_attachment_text`` stores attachments behind an ``附件：<label>``
+    boundary. Replaying those boundaries preserves their independently searchable
+    chunks while allowing parser-only improvements to be applied to current data.
+    """
+    parts = re.split(r"(?m)^附件：([^\r\n]+)\r?\n", raw_text.strip())
+    body = parts[0].strip()
+    parsed_metadata = dict(metadata or {})
+    parsed_metadata["parser_revision"] = PARSER_REVISION
+    chunks = split_legal_text(body)
+    parsed = ParsedLaw(
+        title=title,
+        text=body,
+        metadata=parsed_metadata,
+        content_hash=_semantic_hash(title, parsed_metadata, chunks, body),
+        chunks=chunks,
+    )
+    for index in range(1, len(parts), 2):
+        label = parts[index].strip()
+        attachment_text = parts[index + 1].strip()
+        append_attachment_text(parsed, attachment_text, label)
+    return parsed
 
 
 def append_attachment_text(parsed: ParsedLaw, text: str, label: str) -> None:

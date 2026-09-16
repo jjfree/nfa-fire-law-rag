@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.parser import parse_law_html, split_legal_text
+from app.parser import PARSER_REVISION, parse_law_html, parse_stored_law_text, split_legal_text
 
 
 def test_parse_article_structure():
@@ -11,12 +11,27 @@ def test_parse_article_structure():
     assert law.chunks[0].article_label == "第1條"
     assert "預防火災" in law.chunks[0].content
     assert law.metadata["authority"] == "內政部"
+    assert law.metadata["parser_revision"] == PARSER_REVISION
 
 
 def test_split_points():
     chunks = split_legal_text("一、第一點內容\n補充說明\n二、第二點內容")
     assert len(chunks) == 2
     assert chunks[0].article_label == "一、"
+
+
+def test_article_cross_reference_at_line_start_stays_in_current_article():
+    chunks = split_legal_text(
+        "第 9 條\n"
+        "第六條第一項所定各類場所之管理權人，應定期檢修消防安全設備。\n"
+        "第二項補充文字。\n"
+        "第 10 條\n"
+        "本條為下一條內容。"
+    )
+
+    assert [chunk.article_label for chunk in chunks] == ["第9條", "第10條"]
+    assert "第六條第一項所定" in chunks[0].content
+    assert chunks[0].content != "第9條"
 
 
 def test_split_formal_points():
@@ -45,6 +60,20 @@ def test_split_hierarchical_directions_preserves_parent_section_path():
     assert chunks[1].heading == "二、複查工作 / （四）注意事項"
     assert chunks[2].heading == "二、複查工作 / （五）其他事項"
     assert "（五）其他事項" not in chunks[1].content
+
+
+def test_reparse_stored_text_preserves_attachment_boundaries_and_updates_revision():
+    raw_text = (
+        "一、受理申報\n1.審核申報文件。\n\n"
+        "附件：report.pdf\n第1條 附件條文。"
+    )
+
+    law = parse_stored_law_text(raw_text, "檢修申報規定", {"parser_revision": 1})
+
+    assert law.metadata["parser_revision"] == PARSER_REVISION
+    assert law.chunks[0].heading == "一、受理申報"
+    assert law.chunks[1].heading == "附件：report.pdf"
+    assert law.text == raw_text
 
 
 def test_parse_realistic_legacy_print_view():
