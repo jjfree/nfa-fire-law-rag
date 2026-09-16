@@ -16,11 +16,15 @@
 
 ### 根因
 
-Windows `cmd.exe` 解析批次檔時，LF-only 換行可能造成包含引號、`for`、括號與長 PowerShell 命令的行被錯誤切分。這不是 Streamlit、虛擬環境或瀏覽器本身的問題。
+有兩個獨立的 Windows 編碼風險：
+
+1. Windows `cmd.exe` 解析批次檔時，LF-only 換行可能造成包含引號、`for`、括號與長 PowerShell 命令的行被錯誤切分。
+2. Windows 終端機若使用非 UTF-8 code page，批次檔中的中文會被錯誤解碼；`start` 的視窗標題因此可能顯示成亂碼。這不是 Streamlit、虛擬環境或瀏覽器本身的問題。
 
 ### 永久修正
 
 - `scripts/start_streamlit.bat` 使用 UTF-8、CRLF 換行。
+- 批次檔的 `echo` 與 `start` 視窗標題使用 ASCII `Taiwan Fire Law RAG`，避免受終端機 code page 影響；中文產品名稱仍由 Streamlit 前端與文件顯示。
 - `.gitattributes` 已設定 `*.bat text eol=crlf`，避免 Git checkout 或工具改寫成 LF。
 - 啟動器仍以 repository-local `.venv\\Scripts\\python.exe` 執行，並等待 `/_stcore/health` 成功後才開啟瀏覽器。
 
@@ -38,4 +42,14 @@ Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8501/_stcore/health
 
 ### 維護注意事項
 
-修改 `.bat` 後，提交前確認工作樹中的檔案仍含 `0D 0A` 換行；可用 PowerShell `Format-Hex` 檢查。若使用會將文字檔統一成 LF 的編輯器，儲存後必須重新套用 CRLF 並重跑上述啟動驗證。
+修改 `.bat` 後，提交前確認工作樹中的檔案仍含 `0D 0A` 換行，且不要把中文放回 `echo` 或 `start` 的標題參數；可用 PowerShell `Format-Hex` 檢查。若使用會將文字檔統一成 LF 的編輯器，儲存後必須重新套用 CRLF 並重跑上述啟動驗證。
+
+## 2026-09-16：終端機分頁標題中文亂碼
+
+截圖曾顯示啟動器分頁標題中的中文變成問號與亂碼，但同一畫面的 Streamlit URL 與英文啟動訊息正常。排查後確認是 Windows 終端機 code page 與 UTF-8 批次檔內容不一致；修正為 ASCII console/title 字串後即可避免此類顯示問題。瀏覽器中的 Streamlit 頁面仍應以 UTF-8 顯示繁體中文，若頁面本身亂碼，才另行檢查 Python/HTML response encoding。
+
+## 2026-09-16：全庫文字編碼檢查結果
+
+- 已檢查 58 個受版本控制的文字檔（Python、批次檔、Markdown、JSON、TOML、YAML、HTML 等），均可用 UTF-8 解碼，沒有 BOM 或 Unicode replacement character。
+- repository 既有部分文字檔混用 LF/CRLF；除 Windows `.bat` 外，不要因單一終端機問題任意重整全庫換行，以免產生無關 diff。
+- 前端中文應由 UTF-8 的 Python/Markdown 與產生器輸出；批次檔只在終端機輸出 ASCII，中文品牌顯示責任交給瀏覽器與文件。
