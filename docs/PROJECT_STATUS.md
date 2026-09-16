@@ -7,7 +7,7 @@ Branch: `main` at `origin/main`; the tracked baseline was clean before this docu
 ## Executive summary
 
 The repository is a working Phase 2 proof of concept, not an empty scaffold. The
-SQLite-first path already covers discovery, bounded HTTP fetching, NFA URL identity,
+SQLite-first path already covers discovery, bounded HTTP fetching, source URL identity,
 HTML parsing, article/point chunking, attachment text extraction, version-aware
 ingestion, SQLite schema creation, FTS5 indexing, deterministic or OpenAI
 embeddings, NumPy-assisted hybrid search, FastAPI, MCP, a local Streamlit browser
@@ -75,7 +75,7 @@ future capability, **可沿用** means keep as the current extension point, and
 
 - SQLite is the default storage backend and creates the schema plus an FTS5 virtual
   table without a database server.
-- Law identity uses normalized NFA URL/`LSID` keys; versions preserve old content
+- Law identity uses normalized source URL/`LSID` keys; versions preserve old content
   and identify the current version.
 - Parser extracts titles/metadata, removes dynamic page noise, splits formal
   articles and administrative points, and creates a stable semantic content hash.

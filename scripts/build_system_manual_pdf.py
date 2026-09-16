@@ -174,7 +174,7 @@ def architecture_flow(styles: dict[str, ParagraphStyle], available_width: float)
         return Paragraph(value, styles["arrow"])
 
     data = [
-        [box("NFA 分類頁與法規頁"), arrow("→"), box("Discovery：同網域連結探索"), arrow("→"), box("Fetcher：TLS、節流、重試")],
+        [box("法規分類頁與法規頁"), arrow("→"), box("Discovery：同網域連結探索"), arrow("→"), box("Fetcher：TLS、節流、重試")],
         [arrow("↓"), "", arrow("↓"), "", arrow("↓")],
         [box("Parser + Attachment：清理、metadata、條文與 PDF"), arrow("→"), box("Version-aware Ingest：LSID + hash"), arrow("→"), box("SQLite：laws、versions、chunks、FTS5、vectors")],
         [arrow("↓"), "", arrow("↓"), "", arrow("↓")],
@@ -285,7 +285,7 @@ def build_pdf(source: Path = SOURCE, output: Path = OUTPUT) -> None:
     document = SimpleDocTemplate(
         str(output), pagesize=A4, leftMargin=left_margin, rightMargin=right_margin,
         topMargin=top_margin, bottomMargin=bottom_margin + 7 * mm,
-        title="NFA Fire Law RAG 系統說明書", author="NFA Fire Law RAG",
+        title="台灣消防法規 RAG 系統說明書", author="台灣消防法規 RAG",
     )
     story = markdown_to_flowables(source.read_text(encoding="utf-8"), styles, available_width)
 
@@ -293,7 +293,7 @@ def build_pdf(source: Path = SOURCE, output: Path = OUTPUT) -> None:
         canvas.saveState()
         canvas.setFont(regular_font, 7.5)
         canvas.setFillColor(colors.HexColor("#6B7280"))
-        canvas.drawString(left_margin, 9 * mm, "NFA Fire Law RAG 系統說明書")
+        canvas.drawString(left_margin, 9 * mm, "台灣消防法規 RAG 系統說明書")
         canvas.drawRightString(page_width - right_margin, 9 * mm, f"第 {doc.page} 頁")
         canvas.restoreState()
 

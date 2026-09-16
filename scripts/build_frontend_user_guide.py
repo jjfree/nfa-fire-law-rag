@@ -222,6 +222,8 @@ def add_page_number(paragraph) -> None:
 
 def build_docx(metadata: dict[str, str], blocks: list[Block], output: Path) -> None:
     document = Document()
+    document.core_properties.title = metadata["title"]
+    document.core_properties.author = "台灣消防法規 RAG"
     section = document.sections[0]
     section.page_width = Inches(8.5)
     section.page_height = Inches(11)
@@ -478,7 +480,7 @@ def build_pdf(metadata: dict[str, str], blocks: list[Block], output: Path) -> No
         topMargin=0.64 * inch,
         bottomMargin=0.7 * inch,
         title=metadata["title"],
-        author="NFA Fire Law RAG",
+        author="台灣消防法規 RAG",
     )
     available_width = LETTER[0] - document.leftMargin - document.rightMargin
     story: list[object] = [

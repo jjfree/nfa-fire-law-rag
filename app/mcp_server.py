@@ -9,7 +9,7 @@ from app.models import Law, LawVersion
 from app.rerank import retrieve_answer_hits
 from app.search import exact_article, hybrid_search
 
-mcp = FastMCP("NFA Fire Law RAG")
+mcp = FastMCP("台灣消防法規 RAG")
 
 
 @mcp.tool()

@@ -113,7 +113,7 @@ bounded, and the PostgreSQL/Docker path remains optional and is not executed.
 
 **Input**
 
-- NFA category/detail URL handling in `app/crawler/`, allowed-host config, and
+- Source category/detail URL handling in `app/crawler/`, allowed-host config, and
   existing HTML fixtures.
 
 **Output**
@@ -147,7 +147,7 @@ bounded, and the PostgreSQL/Docker path remains optional and is not executed.
 
 **Input**
 
-- NFA HTML/print fixtures and parser/attachment modules.
+- Source HTML/print fixtures and parser/attachment modules.
 
 **Output**
 

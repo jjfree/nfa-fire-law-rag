@@ -11,7 +11,7 @@ from app.models import Law, LawVersion
 from app.rerank import retrieve_answer_hits
 from app.search import exact_article, hybrid_search
 
-app = FastAPI(title="NFA Fire Law RAG API", version=__version__)
+app = FastAPI(title="台灣消防法規 RAG API", version=__version__)
 
 
 @app.get("/health")

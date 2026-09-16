@@ -1,4 +1,4 @@
-# AGENTS.md — NFA Fire Law RAG
+# AGENTS.md — 台灣消防法規 RAG
 
 This file is the working contract for agents and contributors in this repository.
 It records the current project direction and the safe Windows-first boundaries for
@@ -27,7 +27,7 @@ SQLite, SQLite FTS5, NumPy, and a hybrid lexical/semantic retrieval pipeline.
 
 The intended flow is:
 
-`NFA source → discovery/fetch → HTML/PDF parsing → normalized law/version/chunk
+`law source → discovery/fetch → HTML/PDF parsing → normalized law/version/chunk
 records → SQLite + FTS5 + float32 embeddings → hybrid search → FastAPI/MCP`
 
 Relevant modules are under `app/`: `crawler/` for source access,
@@ -138,7 +138,7 @@ the existing `.gitignore` aligned with this list.
 - Respect the configured allowed host, TLS verification, timeout, retry, and delay.
 - Keep crawling single-threaded and bounded during development.
 - Stop on HTTP 403/429 rather than aggressively retrying.
-- Prefer stable NFA print views when configured, but preserve the original source URL.
+- Prefer stable source-site print views when configured, but preserve the original source URL.
 - Use stable `LSID` identity where available; unchanged content must not create a new
   version or redo embeddings. Changed content creates a new current version while
   preserving the old version.

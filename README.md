@@ -1,6 +1,6 @@
-# NFA Fire Law RAG
+# 台灣消防法規 RAG
 
-可執行的「內政部消防署消防法令」知識庫（目前 Phase 2 / v0.2）：
+可執行的「台灣消防法規」知識庫（目前 Phase 2 / v0.2）：
 
 完整的系統架構、爬取設計與安裝啟動，請參閱 [`docs/SYSTEM_MANUAL.md`](docs/SYSTEM_MANUAL.md)與 [`output/pdf/nfa-fire-law-rag-system-manual.pdf`](output/pdf/nfa-fire-law-rag-system-manual.pdf)。前端使用者可直接查閱含畫面的 [`docs/FRONTEND_USER_GUIDE.md`](docs/FRONTEND_USER_GUIDE.md)、[`output/docx/nfa-fire-law-rag-frontend-user-guide.docx`](output/docx/nfa-fire-law-rag-frontend-user-guide.docx) 或 [`output/pdf/nfa-fire-law-rag-frontend-user-guide.pdf`](output/pdf/nfa-fire-law-rag-frontend-user-guide.pdf)。文件對齊規範見 [`AGENTS.md`](AGENTS.md)；本 README 保留快速啟動與開發者入口。
 
@@ -11,7 +11,7 @@
 - `https://law.nfa.gov.tw/MOBILE/category.aspx?typecode=A002`
 - 可用多分類增量同步：`A001` 通用法令、`A002` 預防調查、`A003` 危險物品管理
 
-> 注意：Phase 2 開發環境仍無法直接解析 `law.nfa.gov.tw` DNS。此版已依目前公開索引可確認的 NFA legacy URL/列印頁格式校正 `LSID` identity、print view 與 parser，並新增不需 DB 的 live probe。第一次在可連線環境執行時，先跑 `python -m app.cli probe --max-laws 3`，再進行完整 ingest。
+> 注意：Phase 2 開發環境仍無法直接解析 `law.nfa.gov.tw` DNS。此版已依目前公開索引可確認的舊版 URL/列印頁格式校正 `LSID` identity、print view 與 parser，並新增不需 DB 的 live probe。第一次在可連線環境執行時，先跑 `python -m app.cli probe --max-laws 3`，再進行完整 ingest。
 
 ## 特色
 
@@ -326,7 +326,7 @@ python -m pytest -q
 # macOS/Linux: source .venv/bin/activate
 ```
 
-測試 fixture 覆蓋：分類連結探索、`LSID`/`ldate` 去重、NFA print URL、真實舊版列印頁格式、章節/條號切分、metadata 擷取、列印時間不影響 semantic hash、hash embedding deterministic，以及 SQLite schema/FTS5/hybrid search；定義檢索另以多個 `本法所稱 X` 案例驗證，不依賴特定名詞硬編碼。
+測試 fixture 覆蓋：分類連結探索、`LSID`/`ldate` 去重、來源站 print URL、真實舊版列印頁格式、章節/條號切分、metadata 擷取、列印時間不影響 semantic hash、hash embedding deterministic，以及 SQLite schema/FTS5/hybrid search；定義檢索另以多個 `本法所稱 X` 案例驗證，不依賴特定名詞硬編碼。
 
 ## 11. 下一版建議
 
@@ -339,4 +339,4 @@ python -m pytest -q
 
 ## 法規與資料使用
 
-本專案只保存公開法規內容與原始來源 URL。實際部署前仍應依消防署網站使用條款/政府資料開放授權規範確認利用方式；回答法律問題時應顯示原始法源與版本日期，重大個案仍以主管機關正式解釋為準。
+本專案只保存公開法規內容與原始來源 URL。實際部署前仍應依來源網站使用條款與政府資料開放授權規範確認利用方式；回答法律問題時應顯示原始法源與版本日期，重大個案仍以主管機關正式解釋為準。

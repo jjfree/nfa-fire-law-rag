@@ -28,7 +28,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo Starting NFA Fire Law RAG at %URL% ...
+echo Starting 台灣消防法規 RAG at %URL% ...
 set "NFA_REPO_DIR=%REPO_DIR%"
 set "NFA_PORT=%PORT%"
 
@@ -41,7 +41,7 @@ if errorlevel 2 (
     exit /b 2
 )
 
-start "NFA Fire Law RAG" /D "%REPO_DIR%" "%PYTHON%" -m streamlit run "%APP%" --server.headless true --server.address 127.0.0.1 --server.port %PORT% --browser.gatherUsageStats false
+start "台灣消防法規 RAG" /D "%REPO_DIR%" "%PYTHON%" -m streamlit run "%APP%" --server.headless true --server.address 127.0.0.1 --server.port %PORT% --browser.gatherUsageStats false
 
 rem Wait for Streamlit's local health endpoint instead of opening a stale page.
 set "READY="

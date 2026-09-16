@@ -1,12 +1,12 @@
-# NFA Fire Law RAG 系統說明書
+# 台灣消防法規 RAG 系統說明書
 
-本說明書說明 NFA Fire Law RAG 的系統架構、法規爬取與版本化設計、檢索與回答流程、安裝啟動方式，以及 Streamlit 前端操作。預設目標是 Windows 10/11 的本機 SQLite 執行環境；Docker、WSL、PostgreSQL 與 pgvector 仍保留為選配相容路徑，不是一般使用的必要條件。
+本說明書說明台灣消防法規 RAG 的系統架構、法規爬取與版本化設計、檢索與回答流程、安裝啟動方式，以及 Streamlit 前端操作。預設目標是 Windows 10/11 的本機 SQLite 執行環境；Docker、WSL、PostgreSQL 與 pgvector 仍保留為選配相容路徑，不是一般使用的必要條件。
 
-文件版本：2026-09-14
+文件版本：2026-09-16
 
 適用版本：Phase 2 / v0.2.x
 
-主要資料來源：內政部消防署法令查詢系統 `law.nfa.gov.tw`
+主要資料來源：台灣消防法規公開查詢網站 `law.nfa.gov.tw`
 
 ## 1. 系統定位與使用邊界
 
@@ -14,7 +14,7 @@
 
 系統是法規檢索與證據整理工具，不取代主管機關正式解釋、行政處分或個案法律意見。若檢索證據不足，回答層應顯示資料不足，不應以模型記憶補齊法律結論。
 
-目前支援的 NFA 分類為：
+目前支援的來源分類為：
 
 - `A001` 通用法令
 - `A002` 預防調查
@@ -24,7 +24,7 @@
 
 ```mermaid
 flowchart LR
-    NFA[NFA 分類頁與法規頁] --> D[Discovery<br/>同網域連結探索]
+    SRC[法規分類頁與法規頁] --> D[Discovery<br/>同網域連結探索]
     D --> F[Fetcher<br/>TLS 節流 重試 403/429 停止]
     F --> P[Parser<br/>清理 metadata 條文切 chunk]
     F --> A[Attachment<br/>同網域 PDF 一層展開]
@@ -49,7 +49,7 @@ flowchart LR
 | 設定 | `app/config.py`, `.env.example` | 來源網址、資料庫、embedding、LLM、web fallback 與 API 設定 |
 | 分類與連結探索 | `app/crawler/categories.py`, `discovery.py` | 解析 A001/A002/A003 分類頁，篩選同網域法規 detail URL |
 | HTTP 抓取 | `app/crawler/fetch.py` | TLS 驗證、User-Agent、節流、timeout、有限重試與封鎖停止 |
-| NFA URL 正規化 | `app/crawler/nfa_urls.py` | 擷取 `LSID`、建立穩定法規 identity、組合列印版 URL |
+| 來源 URL 正規化 | `app/crawler/nfa_urls.py` | 擷取 `LSID`、建立穩定法規 identity、組合列印版 URL |
 | HTML/PDF 解析 | `app/parser.py`, `app/attachments.py` | 清除頁面雜訊、擷取 metadata、切割條文與附件文字 |
 | 入庫與版本 | `app/ingest.py` | unchanged/inserted 判斷、保留歷史版本、寫入 embedding 與 FTS5 |
 | 資料庫 | `app/db.py`, `app/models.py` | SQLite schema、交易、foreign key、FTS5、embedding bytes |
@@ -134,7 +134,7 @@ SQLite 檢索先以 FTS5 取得候選，再以 NumPy 計算 embedding cosine sim
 
 - Windows 10/11
 - Python 3.11 以上，建議使用 repository 內的 `.venv`
-- 可連線 NFA 網站的環境，只有 probe/crawl 需要外部網路
+- 可連線來源網站的環境，只有 probe/crawl 需要外部網路
 - 不需要 Docker、WSL、PostgreSQL 或系統管理員權限
 
 ### 6.2 建立環境與安裝
@@ -264,7 +264,7 @@ MCP 使用 stdio；在 MCP client 設定中以 repository 內的 Python 啟動�
 |---|---|
 | `ModuleNotFoundError` | 是否使用 `.venv\Scripts\python.exe`，以及是否已安裝 `-e ".[dev,ui]"` |
 | UI 顯示沒有資料 | 確認 `DATABASE_URL`、執行 `init-db`，再做 probe/crawl |
-| NFA DNS/連線失敗 | 先只做 `probe --max-laws 3`；確認網路政策與 `NFA_ALLOWED_HOST`，不要直接完整 crawl |
+| 來源站 DNS/連線失敗 | 先只做 `probe --max-laws 3`；確認網路政策與 `NFA_ALLOWED_HOST`，不要直接完整 crawl |
 | HTTP 403/429 | 依程式停止，稍後再試並提高 `CRAWL_DELAY_SECONDS`，不要增加併發或重試壓力 |
 | Ollama 回答失敗 | 先使用 `/v1/search` 或查看證據；確認 Ollama URL、模型與金鑰。檢索本身不依賴 Ollama |
 | Cloud/web fallback 不可用 | 確認 `OLLAMA_API_KEY`、允許網域與 HTTPS；未設定時屬預期的 unavailable 狀態 |
@@ -277,6 +277,7 @@ MCP 使用 stdio；在 MCP client 設定中以 repository 內的 Python 啟動�
 
 | 日期 | 內容 |
 |---|---|
+| 2026-09-16 | 統一產品名稱為「台灣消防法規 RAG」，來源說明改用中性名稱 |
 | 2026-09-16 | 複合包含問題先列直接對象條文，再列相關母法，並保留原始檢索分數 |
 | 2026-09-15 | 加入複合包含問題的證據覆蓋、Web 明確對象過濾，以及統一的本機／Web 引用編號呈現 |
 | 2026-09-14 | 建立本系統說明書，納入架構、爬取設計、安裝啟動與 Streamlit 操作 |

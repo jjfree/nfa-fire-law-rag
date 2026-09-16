@@ -116,3 +116,27 @@ Acceptance evidence
 - Bundled LibreOffice remains unavailable, so direct DOCX rasterization could not run;
   DOCX structure, ZIP integrity, three embedded images, and the same-source PDF render
   passed validation.
+
+Documentation branding audit (2026-09-16)
+
+- Standardized the product name as「台灣消防法規 RAG」and the README description as
+  「可執行的『台灣消防法規』知識庫」.
+- Removed organization names from user-facing source and licensing descriptions.
+- Replaced prose uses of the NFA acronym with neutral source-site wording across README,
+  AGENTS, the system manual, project status, and migration plan.
+- Aligned the API, CLI, MCP, and Streamlit launcher display names with the frontend title.
+- Retained technical identifiers such as NFA_ALLOWED_HOST, nfa_urls.py, and the
+  law.nfa.gov.tw hostname because they are required for correct operation.
+
+Validation
+
+- All tracked Markdown/RST/TXT documentation contains zero matches for
+  內政部消防署, 消防署, and NFA Fire Law RAG.
+- Rebuilt the frontend DOCX/PDF and system-manual PDF. Binary text and metadata
+  checks passed; both PDFs contain 7 pages and all 14 rendered pages were inspected.
+- Direct DOCX rasterization was attempted but LibreOffice soffice.exe is unavailable;
+  DOCX ZIP integrity, 80 paragraphs, 3 tables, 3 images, metadata, and the same-source
+  frontend PDF render passed instead.
+- .venv\\Scripts\\python.exe -m pytest -q: 69 passed, 12 warnings.
+- Ruff passed for all changed Python files; app/cli.py was checked with the repository's
+  pre-existing B008 exception ignored. git diff --check passed.

@@ -6,7 +6,7 @@ import typer
 from app.crawler.categories import category_urls_for_codes
 from app.ingest import crawl_categories, crawl_category, probe_category
 
-app = typer.Typer(help="NFA Fire Law RAG management CLI")
+app = typer.Typer(help="台灣消防法規 RAG management CLI")
 
 
 @app.command("init-db")
