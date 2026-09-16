@@ -1,6 +1,6 @@
 # NFA Fire Law RAG
 
-可執行的「內政部消防署消防預防調查法令」知識庫（目前 Phase 2 / v0.2）：
+可執行的「內政部消防署消防法令」知識庫（目前 Phase 2 / v0.2）：
 
 完整的系統架構、爬取設計與安裝啟動，請參閱 [`docs/SYSTEM_MANUAL.md`](docs/SYSTEM_MANUAL.md)與 [`output/pdf/nfa-fire-law-rag-system-manual.pdf`](output/pdf/nfa-fire-law-rag-system-manual.pdf)。前端使用者可直接查閱含畫面的 [`docs/FRONTEND_USER_GUIDE.md`](docs/FRONTEND_USER_GUIDE.md)、[`output/docx/nfa-fire-law-rag-frontend-user-guide.docx`](output/docx/nfa-fire-law-rag-frontend-user-guide.docx) 或 [`output/pdf/nfa-fire-law-rag-frontend-user-guide.pdf`](output/pdf/nfa-fire-law-rag-frontend-user-guide.pdf)。文件對齊規範見 [`AGENTS.md`](AGENTS.md)；本 README 保留快速啟動與開發者入口。
 
@@ -201,6 +201,8 @@ curl --get 'http://localhost:8000/v1/ask' `
 法規來源及候選集中最相關的母法條文，避免精確命中的少見場所名稱被長問題的通用詞
 稀釋。`top_k` 控制本機
 RAG 證據數；若另有 Web 補充，其編號會接續在本機結果之後，不計入 `top_k`。
+回答證據會先列直接涵蓋明確對象的條文，再列相關母法；這只調整回答證據順序，卡片
+顯示的 hybrid/vector/lexical 仍是原始檢索分數，不代表法律位階。
 
 Streamlit 前端會將已驗證的 `[N]` 引用轉成頁內連結，點擊後跳到並展開對應的本機
 RAG 條文或 Web 補充證據。證據卡依本機後 Web 的順序排列並顯示相同的 `[N]` 編號與

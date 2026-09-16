@@ -181,6 +181,7 @@ def test_composite_place_query_keeps_statute_and_inclusion_evidence(monkeypatch)
     statute.law_id = 20
     statute.law_title = "消防法"
     statute.article_label = "第6條"
+    statute.hybrid_score = 0.14
     base.append(statute)
 
     def fake_search(search_query, top_k, law_title):
@@ -196,4 +197,10 @@ def test_composite_place_query_keeps_statute_and_inclusion_evidence(monkeypatch)
     evidence = {(hit.law_title, hit.article_label) for hit in results}
     assert ("消防法", "第6條") in evidence
     assert ("各類場所消防安全設備設置標準", "第12條") in evidence
+    assert (results[0].law_title, results[0].article_label) == (
+        "各類場所消防安全設備設置標準",
+        "第12條",
+    )
+    assert (results[1].law_title, results[1].article_label) == ("消防法", "第6條")
+    assert results[1].hybrid_score == 0.14
     assert len(results) == 8

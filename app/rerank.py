@@ -239,6 +239,33 @@ def _reserve_candidate(
     selected_keys.add(key)
 
 
+def _promote_candidate(
+    selected: list[SearchHit], candidate: SearchHit, target_index: int
+) -> None:
+    """Move reserved evidence forward without changing its retrieval scores."""
+    key = _evidence_key(candidate)
+    current_index = next(
+        (index for index, hit in enumerate(selected) if _evidence_key(hit) == key),
+        None,
+    )
+    if current_index is None or current_index <= target_index:
+        return
+    selected.insert(min(target_index, len(selected) - 1), selected.pop(current_index))
+
+
+def _promote_focus_evidence(selected: list[SearchHit], focus_terms: tuple[str, ...]) -> None:
+    """Place the first provision that directly names the queried object first."""
+    for index, hit in enumerate(selected):
+        searchable = (
+            f"{hit.law_title}\n{hit.article_label or ''}\n"
+            f"{hit.heading or ''}\n{hit.content}"
+        ).lower()
+        if any(term.lower() in searchable for term in focus_terms):
+            if index > 0:
+                selected.insert(0, selected.pop(index))
+            return
+
+
 def _retrieve_with_facet_coverage(
     query: str, top_k: int, law_title: str | None
 ) -> list[SearchHit]:
@@ -277,6 +304,12 @@ def _retrieve_with_facet_coverage(
             selected_keys.add(_evidence_key(candidate))
         else:
             _reserve_candidate(selected, selected_keys, candidate)
+
+    # Evidence order is separate from the raw retrieval score: direct object
+    # coverage comes first, followed by the governing statute when distinct.
+    _promote_focus_evidence(selected, focus_terms)
+    if primary_statute is not None:
+        _promote_candidate(selected, primary_statute, target_index=1)
     return selected
 
 

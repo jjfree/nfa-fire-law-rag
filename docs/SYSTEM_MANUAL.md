@@ -118,7 +118,7 @@ Parser 會清除列印時間、頁尾、導覽與系統提示等動態 chrome，
 
 SQLite 檢索先以 FTS5 取得候選，再以 NumPy 計算 embedding cosine similarity，並融合文字重疊、法規名稱 routing、明確條號、「本法所稱 X」定義句型及包含問題的精確對象訊號。中文查詢使用 character n-gram，避免只依賴空格分詞。預設 hash embedding 的 vector weight 為 0.30，讓可解釋的法律詞彙訊號優先。
 
-`/v1/search` 與 MCP `search_fire_law` 提供原始檢索排序；`/v1/ask`、MCP `ask_fire_law` 與 Streamlit 問答會對「包含哪些、是否包含某對象」等複合問題保留不同法規來源、候選集中最相關的母法條文，並為明確對象預留證據。角色比較、權限或業務範圍問題則取得較大候選集，再由設定的 Gemma 進行條件式重排。重排失敗會安全回退原始排序。
+`/v1/search` 與 MCP `search_fire_law` 提供原始檢索排序；`/v1/ask`、MCP `ask_fire_law` 與 Streamlit 問答會對「包含哪些、是否包含某對象」等複合問題保留不同法規來源、候選集中最相關的母法條文，並為明確對象預留證據。回答證據先列直接涵蓋明確對象的條文，再列相關母法；此順序不改寫原始 hybrid、vector 或 lexical 分數。角色比較、權限或業務範圍問題則取得較大候選集，再由設定的 Gemma 進行條件式重排。重排失敗會安全回退原始排序。
 
 ### 5.2 證據回答與 web fallback
 
@@ -277,6 +277,7 @@ MCP 使用 stdio；在 MCP client 設定中以 repository 內的 Python 啟動�
 
 | 日期 | 內容 |
 |---|---|
+| 2026-09-16 | 複合包含問題先列直接對象條文，再列相關母法，並保留原始檢索分數 |
 | 2026-09-15 | 加入複合包含問題的證據覆蓋、Web 明確對象過濾，以及統一的本機／Web 引用編號呈現 |
 | 2026-09-14 | 建立本系統說明書，納入架構、爬取設計、安裝啟動與 Streamlit 操作 |
 | 2026-09-14 | 將文件對齊規範移至 `AGENTS.md` 第 17 節，保留本手冊的維護入口 |

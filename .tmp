@@ -86,3 +86,33 @@ Final validation (2026-09-15)
   visually inspected. The DOCX ZIP/media/paragraph/table structure passed validation;
   an independent DOCX-to-image render was unavailable because the bundled runtime does
   not include LibreOffice/soffice, so the same-source frontend PDF was used for visual QA.
+
+Parent-statute evidence priority correction (2026-09-16)
+
+Observed issue
+- The composite place query retained 消防法第6條 but placed it at [8]. The reservation
+  mechanism replaced the last selected item and did not distinguish answer evidence order
+  from raw hybrid relevance.
+
+Implemented direction
+1. Preserve hybrid/vector/lexical scores as retrieval relevance signals.
+2. For composite inclusion questions, promote the evidence that directly names the explicit
+   object to [1].
+3. Promote the best matching parent statute already admitted from the bounded candidate set
+   to [2] when it is distinct from the direct evidence.
+4. Keep raw search order unchanged; apply this only to answer-facing composite retrieval.
+
+Acceptance evidence
+- Real corpus: 各類場所消防安全設備設置標準第12條 ranks [1] and 消防法第6條
+  ranks [2] for「請說明消防列管場所包含哪些？是否包含寺廟？」.
+- 消防法第6條 retains its original 0.1422 hybrid score; no authority value is mixed into
+  the retrieval score.
+- The local evidence remains sufficient and web_needed is false.
+- Full offline suite: 69 passed, 12 warnings in 2.11s; changed-file Ruff and
+  git diff --check passed.
+- Frontend guide version 1.3 and the system manual were rebuilt. Both seven-page PDFs
+  passed full-page visual inspection. The screenshot was unchanged because the pictured
+  response does not exercise composite parent-statute ordering.
+- Bundled LibreOffice remains unavailable, so direct DOCX rasterization could not run;
+  DOCX structure, ZIP integrity, three embedded images, and the same-source PDF render
+  passed validation.

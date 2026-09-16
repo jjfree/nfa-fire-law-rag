@@ -88,7 +88,9 @@ future capability, **可沿用** means keep as the current extension point, and
 - Composite inclusion questions are split into focused retrieval facets. Exact named
   objects receive a conservative lexical signal, and the answer-facing merge reserves
   evidence coverage across distinct facets plus the best matching parent statute in the
-  bounded candidate set before optional reranking.
+  bounded candidate set before optional reranking. The answer evidence order promotes
+  direct object coverage first and the related parent statute second without changing
+  the stored retrieval scores.
 - FastAPI health/search/article/law/version/admin endpoints and MCP tools exist.
 - A local Streamlit UI supports natural-language queries, law filtering, result
   counts, current-version evidence, scores, source links, and clickable answer
