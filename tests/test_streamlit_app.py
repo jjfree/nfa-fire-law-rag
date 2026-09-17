@@ -144,11 +144,37 @@ def test_build_evidence_cards_opens_target_with_fragment_without_query_reload():
     assert "[1] 消防法" in cards
     assert "[2] 官方補充" in cards
     assert cards.index("[1] 消防法") < cards.index("[2] 官方補充")
-    assert 'class="rag-evidence-group"' in cards
-    assert "消防法（1 筆）" in cards
+    assert 'class="rag-evidence-group"' not in cards
     assert 'class="rag-evidence-card"' in cards
     assert "?evidence=" not in cards
     assert "本法所稱主管機關。" in cards
+
+
+def test_build_evidence_cards_preserves_number_order_across_repeated_laws():
+    def local_result(law_title: str, article_label: str) -> dict[str, object]:
+        return {
+            "law_title": law_title,
+            "article_label": article_label,
+            "heading": "",
+            "content": f"{law_title}{article_label}內容",
+            "source_url": "https://law.nfa.gov.tw/test",
+            "version_no": 1,
+            "vector_score": 0.2,
+            "lexical_score": 0.3,
+            "hybrid_score": 0.4,
+        }
+
+    cards = build_evidence_cards(
+        [
+            local_result("法規甲", "第1條"),
+            local_result("法規乙", "第2條"),
+            local_result("法規甲", "第3條"),
+        ],
+        [],
+    )
+
+    assert cards.index("[1] 法規甲") < cards.index("[2] 法規乙")
+    assert cards.index("[2] 法規乙") < cards.index("[3] 法規甲")
 
 
 def test_search_question_adds_answer_layer(monkeypatch):

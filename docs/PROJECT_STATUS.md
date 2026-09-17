@@ -1,6 +1,6 @@
 # Project Status — nfa-fire-law-rag
 
-Date: 2026-09-16
+Date: 2026-09-17
 Repository: `C:\Users\james.chang\source\nfa-fire-law-rag`
 Branch: `main` at `origin/main`; the tracked baseline was clean before this documentation change.
 
@@ -35,7 +35,7 @@ not required for the Windows SQLite target.
 | Database | `app/db.py`, `app/models.py`, `scripts/init.sql` | SQLite default implemented; PostgreSQL optional |
 | API/MCP | `app/api.py`, `app/mcp_server.py` | Implemented PoC search and cited-answer interfaces |
 | Browser UI | `app/streamlit_app.py`, `app/conversations.py`, `.streamlit/config.toml`, `pyproject.toml` `ui` extra | Local Streamlit Q&A/evidence interface with SQLite-persisted multi-conversation history, title editing, and deletion |
-| Tests | 16 test modules plus fixtures | 85 tests passing |
+| Tests | 16 test modules plus fixtures | 86 tests passing |
 | Evaluation | `eval/phase2_queries.json`, `app/evaluation.py`, CLI `eval` | Seed evaluation implemented; corpus-dependent |
 | Config | `app/config.py`, `.env.example`; local `.env` ignored | Implemented; secrets kept local |
 | Docs | `README.md`, `AGENTS.md`, four `docs/` files, versioned screenshots, system-manual PDF, and frontend Word/PDF guides | README, full system manual, frontend user guide, editable/print deliverables, and operational documentation are present |
@@ -102,8 +102,8 @@ future capability, **可沿用** means keep as the current extension point, and
   completion reasons into clear Chinese generation states while preserving the
   original metadata for diagnostics.
 - Administrative-direction parsing preserves parent section/subsection headings for
-  repeated item labels on newly ingested versions. The Streamlit evidence view groups
-  cards by law while retaining stable per-provision citation numbers.
+  repeated item labels on newly ingested versions. The Streamlit evidence view keeps
+  cards in strict citation-number order while retaining the law title on every card.
 - Version metadata records an explicit parser revision. Incremental crawl returns
   `reprocess_required` instead of silently accepting stale derived chunks, and a
   dry-run-first `reprocess-current` CLI can rebuild current chunks, embeddings,
@@ -197,7 +197,7 @@ no live crawl was run.
 | NumPy | 2.5.3; float32 array and norm calculation passed |
 | Streamlit UI dependency | `1.63.0` installed in repository `.venv` |
 | Ollama hosted web-search key | Configured only in ignored local `.env`; live cloud/web request was not run |
-| repository tests | `83 passed, 30 warnings` after parser revisioning, cross-reference parsing, source-change/history handling, controlled reprocessing, and test-DB isolation changes |
+| repository tests | `86 passed, 30 warnings` after evidence-order rendering, parser revisioning, cross-reference parsing, source-change/history handling, controlled reprocessing, and test-DB isolation changes |
 | Ruff (changed Python files) | Passed |
 | Ruff (whole repository) | Three pre-existing findings remain: one `B008` in `app/cli.py` and import ordering in two crawler modules |
 

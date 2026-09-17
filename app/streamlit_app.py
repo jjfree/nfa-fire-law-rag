@@ -99,15 +99,6 @@ _EVIDENCE_CSS = """
   margin: 0.5rem 0;
   overflow: hidden;
 }
-.rag-evidence-group {
-  margin: 0.9rem 0 1.1rem 0;
-}
-.rag-evidence-group-title {
-  color: rgba(128, 128, 128, 0.95);
-  font-size: 0.9rem;
-  font-weight: 700;
-  margin: 0 0 0.2rem 0.15rem;
-}
 .rag-evidence-toggle {
   position: absolute;
   opacity: 0;
@@ -183,34 +174,25 @@ def build_evidence_cards(
     """Build client-side evidence cards that open through fragment targeting."""
     cards = [_EVIDENCE_CSS]
     local_count = len(local_results)
-    groups: dict[str, list[tuple[int, dict[str, Any]]]] = {}
     for index, row in enumerate(local_results, start=1):
-        groups.setdefault(row["law_title"], []).append((index, row))
-    for law_title, group_rows in groups.items():
-        cards.append('<section class="rag-evidence-group">')
-        cards.append(
-            f'<div class="rag-evidence-group-title">{escape(law_title)}'
-            f"（{len(group_rows)} 筆）</div>"
+        law_title = row["law_title"]
+        article = row["article_label"]
+        heading = f"｜{row['heading']}" if row["heading"] else ""
+        title = f"[{index}] {law_title}｜{article}{heading}｜版本 {row['version_no']}"
+        metadata = "hybrid={:.4f} · vector={:.4f} · lexical={:.4f}".format(
+            row["hybrid_score"], row["vector_score"], row["lexical_score"]
         )
-        for index, row in group_rows:
-            article = row["article_label"]
-            heading = f"｜{row['heading']}" if row["heading"] else ""
-            title = f"[{index}] {law_title}｜{article}{heading}｜版本 {row['version_no']}"
-            metadata = "hybrid={:.4f} · vector={:.4f} · lexical={:.4f}".format(
-                row["hybrid_score"], row["vector_score"], row["lexical_score"]
+        cards.append(
+            _evidence_card(
+                index=index,
+                title=title,
+                metadata=metadata,
+                content=row["content"],
+                source_url=row["source_url"],
+                anchor_prefix=anchor_prefix,
+                default_expanded=index == 1,
             )
-            cards.append(
-                _evidence_card(
-                    index=index,
-                    title=title,
-                    metadata=metadata,
-                    content=row["content"],
-                    source_url=row["source_url"],
-                    anchor_prefix=anchor_prefix,
-                    default_expanded=index == 1,
-                )
-            )
-        cards.append("</section>")
+        )
     for index, source in enumerate(web_results, start=local_count + 1):
         cards.append(
             _evidence_card(
