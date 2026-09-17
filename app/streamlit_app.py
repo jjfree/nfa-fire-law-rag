@@ -14,6 +14,50 @@ from typing import Any
 
 ANSWER_MODEL_OPTIONS = ("gemma4:e2b", "gemma4:e4b", "gemma4:31b-cloud")
 _CITATION_RE = re.compile(r"\[(\d+)\]")
+_OUTPUT_LIMIT_REASONS = {"length", "max_tokens", "token_limit"}
+
+
+def build_answer_diagnostic(response: dict[str, Any]) -> str:
+    """Build a user-facing generation summary while retaining raw metadata elsewhere."""
+    model = response.get("answer_model")
+    if not model:
+        return ""
+
+    parts = [f"模型：{model}"]
+    actual_tokens = response.get("answer_eval_count")
+    output_limit = response.get("answer_effective_output_tokens")
+    if actual_tokens is not None and output_limit is not None:
+        parts.append(f"實際輸出 {actual_tokens}／上限 {output_limit} tokens")
+    elif actual_tokens is not None:
+        parts.append(f"實際輸出 {actual_tokens} tokens")
+    elif output_limit is not None:
+        parts.append(f"輸出上限 {output_limit} tokens")
+
+    answer_status = str(response.get("answer_status") or "").strip().lower()
+    done_reason = str(response.get("answer_done_reason") or "").strip()
+    normalized_reason = done_reason.lower()
+    if answer_status == "incomplete":
+        generation_status = (
+            "達到輸出上限，回答未完整"
+            if normalized_reason in _OUTPUT_LIMIT_REASONS
+            else "回答未完整"
+        )
+    elif answer_status == "llm_error":
+        generation_status = "產生失敗"
+    elif normalized_reason == "stop" or answer_status == "ok":
+        generation_status = "已完成"
+    elif normalized_reason in _OUTPUT_LIMIT_REASONS:
+        generation_status = "達到輸出上限"
+    elif done_reason:
+        generation_status = f"模型已結束輸出（技術代碼：{done_reason}）"
+    else:
+        generation_status = "未回報"
+    parts.append(f"生成狀態：{generation_status}")
+
+    retry_count = response.get("answer_retry_count")
+    if retry_count:
+        parts.append(f"重試：{retry_count} 次")
+    return " · ".join(parts)
 
 
 def linkify_citations(
@@ -270,16 +314,7 @@ def _render_response(
         else:
             st.info(response["answer"])
     if response.get("answer_model"):
-        diagnostic_parts = [f"模型：{response['answer_model']}"]
-        if response.get("answer_effective_output_tokens"):
-            diagnostic_parts.append(
-                f"輸出上限：{response['answer_effective_output_tokens']} tokens"
-            )
-        if response.get("answer_done_reason"):
-            diagnostic_parts.append(f"停止原因：{response['answer_done_reason']}")
-        if response.get("answer_retry_count"):
-            diagnostic_parts.append(f"重試：{response['answer_retry_count']} 次")
-        st.caption(" · ".join(diagnostic_parts))
+        st.caption(build_answer_diagnostic(response))
     web_status = response.get("web_search_status")
     if web_status == "used":
         st.caption("本次 RAG 證據不足，已補充允許清單內的官方網頁資料。")

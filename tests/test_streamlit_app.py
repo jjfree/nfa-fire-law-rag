@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from app.streamlit_app import (
     ANSWER_MODEL_OPTIONS,
+    build_answer_diagnostic,
     build_evidence_cards,
     build_response,
     evidence_anchor,
@@ -20,6 +21,42 @@ class FakeHit:
     vector_score: float
     lexical_score: float
     hybrid_score: float
+
+
+def test_build_answer_diagnostic_shows_actual_tokens_and_completed_status():
+    diagnostic = build_answer_diagnostic(
+        {
+            "answer_model": "gemma4:31b-cloud",
+            "answer_eval_count": 567,
+            "answer_effective_output_tokens": 8192,
+            "answer_done_reason": "stop",
+            "answer_status": "ok",
+            "answer_retry_count": 0,
+        }
+    )
+
+    assert diagnostic == (
+        "模型：gemma4:31b-cloud · 實際輸出 567／上限 8192 tokens · "
+        "生成狀態：已完成"
+    )
+
+
+def test_build_answer_diagnostic_explains_output_limit_truncation():
+    diagnostic = build_answer_diagnostic(
+        {
+            "answer_model": "gemma4:e2b",
+            "answer_eval_count": 2048,
+            "answer_effective_output_tokens": 2048,
+            "answer_done_reason": "length",
+            "answer_status": "incomplete",
+            "answer_retry_count": 1,
+        }
+    )
+
+    assert diagnostic == (
+        "模型：gemma4:e2b · 實際輸出 2048／上限 2048 tokens · "
+        "生成狀態：達到輸出上限，回答未完整 · 重試：1 次"
+    )
 
 
 def test_build_response_preserves_provenance_and_scores():

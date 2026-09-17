@@ -26,7 +26,7 @@ not required for the Windows SQLite target.
 
 | Area | Current evidence | Assessment |
 |---|---|---|
-| Repository | 67 tracked files after this change; `main` is synchronized with `origin/main` after push | Present and maintainable |
+| Repository | 74 tracked files; `main` tracks `origin/main` | Present and maintainable |
 | Python package | `app/` with config, models, DB, parser, ingest, search, API, MCP | Substantially implemented |
 | Crawler | `app/crawler/{discovery,fetch,nfa_urls}.py` | Implemented, bounded and host-validated |
 | Ingestion | `app/ingest.py`, attachment handling, version/hash logic | Implemented with focused follow-up needs |
@@ -35,7 +35,7 @@ not required for the Windows SQLite target.
 | Database | `app/db.py`, `app/models.py`, `scripts/init.sql` | SQLite default implemented; PostgreSQL optional |
 | API/MCP | `app/api.py`, `app/mcp_server.py` | Implemented PoC search and cited-answer interfaces |
 | Browser UI | `app/streamlit_app.py`, `app/conversations.py`, `.streamlit/config.toml`, `pyproject.toml` `ui` extra | Local Streamlit Q&A/evidence interface with SQLite-persisted multi-conversation history, title editing, and deletion |
-| Tests | 16 test modules plus fixtures | 76 tests passing |
+| Tests | 16 test modules plus fixtures | 85 tests passing |
 | Evaluation | `eval/phase2_queries.json`, `app/evaluation.py`, CLI `eval` | Seed evaluation implemented; corpus-dependent |
 | Config | `app/config.py`, `.env.example`; local `.env` ignored | Implemented; secrets kept local |
 | Docs | `README.md`, `AGENTS.md`, four `docs/` files, versioned screenshots, system-manual PDF, and frontend Word/PDF guides | README, full system manual, frontend user guide, editable/print deliverables, and operational documentation are present |
@@ -97,7 +97,10 @@ future capability, **可沿用** means keep as the current extension point, and
   citations for repeated labels with different content.
 - Answer generation uses model-specific context/output profiles, records Ollama
   completion metadata, retries a detected length truncation once, and reports an
-  explicit incomplete state if the retry still fails to finish.
+  explicit incomplete state if the retry still fails to finish. The frontend
+  diagnostic line shows actual/output-limit token counts and translates raw
+  completion reasons into clear Chinese generation states while preserving the
+  original metadata for diagnostics.
 - Administrative-direction parsing preserves parent section/subsection headings for
   repeated item labels on newly ingested versions. The Streamlit evidence view groups
   cards by law while retaining stable per-provision citation numbers.
