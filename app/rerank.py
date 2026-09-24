@@ -9,16 +9,23 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass
 from functools import lru_cache
 
 from app.answer import AnswerGenerationError, OllamaAnswerer
 from app.config import get_settings
 from app.query_analysis import (
+    exhaustive_section_heading,
     extract_focus_terms,
     is_broad_regulatory_query,
     split_query_facets,
 )
-from app.search import SearchHit, _matched_law_titles, hybrid_search
+from app.search import (
+    SearchHit,
+    _matched_law_titles,
+    exhaustive_section_search,
+    hybrid_search,
+)
 
 _COMPARISON_MARKERS = ("差異", "不同", "區別", "比較", "各自", "分別", "有何差別")
 _SCOPE_MARKERS = ("權限", "職權", "業務範圍", "執業範圍", "可以做", "能做", "得從事")
@@ -47,6 +54,28 @@ _ENTITY_CONNECTOR_RE = re.compile(
 
 class RerankError(RuntimeError):
     """Raised when an LLM rerank response cannot be safely applied."""
+
+
+@dataclass(frozen=True)
+class RetrievalResult:
+    hits: list[SearchHit]
+    mode: str
+    requested_top_k: int
+    total_matches: int
+    complete: bool | None
+    scope_law_title: str | None = None
+    scope_heading: str | None = None
+
+    def metadata(self) -> dict[str, object]:
+        return {
+            "mode": self.mode,
+            "requested_top_k": self.requested_top_k,
+            "returned_matches": len(self.hits),
+            "total_matches": self.total_matches,
+            "complete": self.complete,
+            "scope_law_title": self.scope_law_title,
+            "scope_heading": self.scope_heading,
+        }
 
 
 def is_reranker_query(query: str) -> bool:
@@ -344,7 +373,7 @@ def _retrieve_with_facet_coverage(
     return selected
 
 
-def retrieve_answer_hits(
+def _retrieve_ranked_hits(
     query: str, top_k: int, law_title: str | None = None
 ) -> list[SearchHit]:
     """Retrieve answer evidence and conditionally rerank ambiguous comparisons."""
@@ -371,3 +400,38 @@ def retrieve_answer_hits(
         return OllamaReranker().rerank(query, candidates, top_k)
     except (AnswerGenerationError, RerankError):
         return candidates[:top_k]
+
+
+def retrieve_answer_evidence(
+    query: str, top_k: int, law_title: str | None = None
+) -> RetrievalResult:
+    """Retrieve evidence with explicit coverage metadata for exhaustive requests."""
+    section_heading = exhaustive_section_heading(query)
+    if section_heading:
+        section = exhaustive_section_search(query, section_heading, law_title=law_title)
+        if section is not None:
+            return RetrievalResult(
+                hits=section.hits,
+                mode="structural_section",
+                requested_top_k=top_k,
+                total_matches=section.total_matches,
+                complete=True,
+                scope_law_title=section.law_title,
+                scope_heading=section.heading,
+            )
+
+    hits = _retrieve_ranked_hits(query, top_k, law_title)
+    return RetrievalResult(
+        hits=hits,
+        mode="hybrid",
+        requested_top_k=top_k,
+        total_matches=len(hits),
+        complete=None,
+    )
+
+
+def retrieve_answer_hits(
+    query: str, top_k: int, law_title: str | None = None
+) -> list[SearchHit]:
+    """Compatibility wrapper returning only answer-facing evidence rows."""
+    return retrieve_answer_evidence(query, top_k, law_title).hits

@@ -8,7 +8,7 @@ from app.answer import answer_question
 from app.db import init_db, session_scope
 from app.ingest import crawl_category, probe_category
 from app.models import Law, LawVersion
-from app.rerank import retrieve_answer_hits
+from app.rerank import retrieve_answer_evidence
 from app.search import exact_article, hybrid_search
 
 app = FastAPI(title="台灣消防法規 RAG API", version=__version__)
@@ -49,11 +49,12 @@ def api_search(q: str = Query(min_length=1), top_k: int = Query(default=8, ge=1,
 @app.get("/v1/ask")
 def api_ask(q: str = Query(min_length=1), top_k: int = Query(default=8, ge=1, le=50), law_title: str | None = None):
     """Answer from current retrieved law chunks with local-model citations."""
-    hits = retrieve_answer_hits(q, top_k, law_title)
+    evidence = retrieve_answer_evidence(q, top_k, law_title)
     return {
         "query": q,
-        **answer_question(q, hits),
-        "results": [asdict(x) for x in hits],
+        **answer_question(q, evidence.hits),
+        "retrieval": evidence.metadata(),
+        "results": [asdict(x) for x in evidence.hits],
     }
 
 

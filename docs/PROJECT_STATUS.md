@@ -1,6 +1,6 @@
 # Project Status — nfa-fire-law-rag
 
-Date: 2026-09-17
+Date: 2026-09-24
 Repository: `C:\Users\james.chang\source\nfa-fire-law-rag`
 Branch: `main` at `origin/main`; the tracked baseline was clean before this documentation change.
 
@@ -30,15 +30,15 @@ not required for the Windows SQLite target.
 | Python package | `app/` with config, models, DB, parser, ingest, search, API, MCP | Substantially implemented |
 | Crawler | `app/crawler/{discovery,fetch,nfa_urls}.py` | Implemented, bounded and host-validated |
 | Ingestion | `app/ingest.py`, attachment handling, version/hash logic | Implemented with focused follow-up needs |
-| Retrieval | `app/search.py` | Implemented SQLite FTS5 + NumPy hybrid path |
+| Retrieval | `app/search.py`, `app/rerank.py` | Implemented SQLite FTS5 + NumPy hybrid path plus scoped structural retrieval for exhaustive chapter queries |
 | Embedding | `app/embedding.py` | Implemented deterministic hash and optional OpenAI providers |
 | Database | `app/db.py`, `app/models.py`, `scripts/init.sql` | SQLite default implemented; PostgreSQL optional |
-| API/MCP | `app/api.py`, `app/mcp_server.py` | Implemented PoC search and cited-answer interfaces |
-| Browser UI | `app/streamlit_app.py`, `app/conversations.py`, `.streamlit/config.toml`, `pyproject.toml` `ui` extra | Local Streamlit Q&A/evidence interface with SQLite-persisted multi-conversation history, title editing, and deletion |
-| Tests | 16 test modules plus fixtures | 86 tests passing |
+| API/MCP | `app/api.py`, `app/mcp_server.py` | Implemented PoC search and cited-answer interfaces with retrieval-mode and coverage metadata |
+| Browser UI | `app/streamlit_app.py`, `app/conversations.py`, `.streamlit/config.toml`, `pyproject.toml` `ui` extra | Local Streamlit Q&A/evidence interface with SQLite-persisted multi-conversation history, title editing, deletion, latest-question viewport positioning, and exhaustive-query coverage display |
+| Tests | 16 test modules plus fixtures | 95 tests passing |
 | Evaluation | `eval/phase2_queries.json`, `app/evaluation.py`, CLI `eval` | Seed evaluation implemented; corpus-dependent |
 | Config | `app/config.py`, `.env.example`; local `.env` ignored | Implemented; secrets kept local |
-| Docs | `README.md`, `AGENTS.md`, four `docs/` files, versioned screenshots, system-manual PDF, and frontend Word/PDF guides | README, full system manual, frontend user guide, editable/print deliverables, and operational documentation are present |
+| Docs | `README.md`, `AGENTS.md`, five `docs/` files, versioned screenshots, system-manual PDF, and frontend Word/PDF guides | README, full system manual, frontend user guide, developer notes, editable/print deliverables, and operational documentation are present |
 | Windows launchers | `scripts/start_streamlit.bat` | Implemented; starts the local UI and opens the browser without crawling or installing |
 | Requirements files | No `requirements*.txt`/`.in`; dependencies in `pyproject.toml` | `pyproject.toml` is the source of truth |
 | Data | Ignored local `data/nfa_fire_law.db` (~128 MiB) and `data/test.txt` | Local/generated; not commit candidates |
@@ -95,6 +95,12 @@ future capability, **可沿用** means keep as the current extension point, and
   related parent act from a bounded candidate pool. Evidence selection prioritizes
   distinct laws, caps the first fill at two provisions per law, and retains separate
   citations for repeated labels with different content.
+- Exhaustive single-law penalty questions now bypass ordinary relevance truncation:
+  the answer path detects explicit all/complete/per-article intent, expands penalty
+  terminology, scopes to the named law's current `罰則` chapter, excludes deleted-only
+  provisions, and returns every matching chunk in legal sequence. Retrieval metadata
+  reports the mode, chapter, total count, returned count, and completeness; the
+  Streamlit UI makes this visible (for example, `消防法／第六章 罰則，21／21`).
 - Answer generation uses model-specific context/output profiles, records Ollama
   completion metadata, retries a detected length truncation once, and reports an
   explicit incomplete state if the retry still fails to finish. The frontend
@@ -197,7 +203,7 @@ no live crawl was run.
 | NumPy | 2.5.3; float32 array and norm calculation passed |
 | Streamlit UI dependency | `1.63.0` installed in repository `.venv` |
 | Ollama hosted web-search key | Configured only in ignored local `.env`; live cloud/web request was not run |
-| repository tests | `86 passed, 30 warnings` after evidence-order rendering, parser revisioning, cross-reference parsing, source-change/history handling, controlled reprocessing, and test-DB isolation changes |
+| repository tests | `95 passed, 30 warnings` after exhaustive-section retrieval, evidence coverage, prompt-source compaction, latest-question viewport positioning, and prior parser/versioning coverage |
 | Ruff (changed Python files) | Passed |
 | Ruff (whole repository) | Three pre-existing findings remain: one `B008` in `app/cli.py` and import ordering in two crawler modules |
 

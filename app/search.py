@@ -8,7 +8,7 @@ from app.config import get_settings
 from app.db import embedding_from_storage, session_scope
 from app.embedding import get_embedder
 from app.models import Law, LawChunk, LawVersion
-from app.query_analysis import extract_focus_terms
+from app.query_analysis import expand_regulatory_query, extract_focus_terms
 
 ARTICLE_HINT_RE = re.compile(
     r"(第\s*[一二三四五六七八九十百千萬〇○零兩\d\-之]+\s*條(?:\s*之\s*[一二三四五六七八九十百千\d]+)?)"
@@ -83,6 +83,15 @@ class SearchHit:
     vector_score: float
     lexical_score: float
     hybrid_score: float
+    retrieval_mode: str = "hybrid"
+
+
+@dataclass(frozen=True)
+class SectionSearchResult:
+    hits: list[SearchHit]
+    law_title: str
+    heading: str
+    total_matches: int
 
 
 def _article_hint(query: str) -> str | None:
@@ -214,12 +223,78 @@ def _text_lexical_score(
     return min(score, 1.0)
 
 
+def _is_deleted_only(article_label: str | None, content: str) -> bool:
+    """Return true only for a provision whose body is merely a deletion marker."""
+    compact = re.sub(r"\s+", "", content)
+    label = re.sub(r"\s+", "", article_label or "")
+    if label and compact.startswith(label):
+        compact = compact[len(label) :]
+    return compact in {"刪除", "（刪除）", "(刪除)"}
+
+
+def exhaustive_section_search(
+    query: str,
+    heading_term: str,
+    law_title: str | None = None,
+) -> SectionSearchResult | None:
+    """Return one exact law section in stored provision order, without top-k loss."""
+    with session_scope() as db:
+        titles = list(db.scalars(select(Law.title).distinct()))
+        if law_title:
+            scoped_titles = (law_title,) if law_title in titles else ()
+        else:
+            scoped_titles = _matched_law_titles(query, titles)
+        if len(scoped_titles) != 1:
+            return None
+
+        scoped_title = scoped_titles[0]
+        rows = db.execute(
+            select(LawChunk, LawVersion, Law)
+            .join(LawVersion, LawChunk.version_id == LawVersion.id)
+            .join(Law, LawVersion.law_id == Law.id)
+            .where(
+                LawVersion.is_current.is_(True),
+                Law.title == scoped_title,
+                LawChunk.heading.contains(heading_term),
+            )
+            .order_by(LawChunk.seq)
+        ).all()
+
+        hits = [
+            SearchHit(
+                chunk_id=chunk.id,
+                law_id=law.id,
+                law_title=law.title,
+                version_no=version.version_no,
+                article_label=chunk.article_label,
+                heading=chunk.heading,
+                content=chunk.content,
+                source_url=law.source_url,
+                vector_score=0.0,
+                lexical_score=0.0,
+                hybrid_score=0.0,
+                retrieval_mode="structural_section",
+            )
+            for chunk, version, law in rows
+            if not _is_deleted_only(chunk.article_label, chunk.content)
+        ]
+        if not hits:
+            return None
+        return SectionSearchResult(
+            hits=hits,
+            law_title=scoped_title,
+            heading=hits[0].heading or heading_term,
+            total_matches=len(hits),
+        )
+
+
 def _sqlite_hybrid_search(query: str, top_k: int, law_title: str | None) -> list[SearchHit]:
     settings = get_settings()
     query = _normalize_query(query) or query
     query_vector = np.asarray(get_embedder().embed([query])[0], dtype=np.float32)
     query_norm = np.linalg.norm(query_vector) or 1.0
-    match_query = _cjk_fts_query(query)
+    lexical_query = expand_regulatory_query(query)
+    match_query = _cjk_fts_query(lexical_query)
 
     with session_scope() as db:
         titles = list(db.scalars(select(Law.title).distinct()))
@@ -283,7 +358,7 @@ def _sqlite_hybrid_search(query: str, top_k: int, law_title: str | None) -> list
             vector_score = float(np.dot(vector, query_vector) / denominator)
             vector_score = max(0.0, min(1.0, vector_score))
             lexical_score = _text_lexical_score(
-                query, row.title, row.article_label, row.heading, row.content
+                lexical_query, row.title, row.article_label, row.heading, row.content
             )
             if row.title in matched_titles:
                 lexical_score = min(1.0, lexical_score + settings.law_title_match_boost)
@@ -320,16 +395,17 @@ def hybrid_search(
     if settings.storage_backend.lower() == "sqlite":
         return _sqlite_hybrid_search(query, top_k, law_title)
     query_vector = get_embedder().embed([query])[0]
+    lexical_query = expand_regulatory_query(query)
     vector_weight = settings.hybrid_vector_weight
     lexical_weight = 1.0 - vector_weight
 
     vector_score = (literal(1.0) - LawChunk.embedding.cosine_distance(query_vector)).label(
         "vector_score"
     )
-    content_sim = func.similarity(LawChunk.content, query)
-    title_sim = func.similarity(Law.title, query)
+    content_sim = func.similarity(LawChunk.content, lexical_query)
+    title_sim = func.similarity(Law.title, lexical_query)
     title_article_sim = func.similarity(
-        func.concat(Law.title, func.coalesce(LawChunk.article_label, "")), query
+        func.concat(Law.title, func.coalesce(LawChunk.article_label, "")), lexical_query
     )
     article_hint = _article_hint(query)
     if article_hint:

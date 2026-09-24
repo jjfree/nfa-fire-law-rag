@@ -9,6 +9,7 @@ from app.answer import (
     build_answer_prompt,
     build_evidence_context,
     generate_answer,
+    rag_needs_web_search,
     validate_citations,
 )
 from app.web_search import WebSearchResult
@@ -44,6 +45,23 @@ def test_evidence_context_keeps_stable_provenance_labels():
     assert "條號：第13條" in context
     assert "版本：2" in context
     assert "https://law.nfa.gov.tw/test" in context
+
+
+def test_evidence_context_compacts_repeated_same_law_source():
+    first = _hit("第33條")
+    second = _hit("第34條")
+
+    context = build_evidence_context([first, second])
+
+    assert context.count("https://law.nfa.gov.tw/test") == 1
+    assert "來源 URL：同 [1] 法規版本與來源" in context
+
+
+def test_complete_structural_evidence_does_not_trigger_web_fallback():
+    hit = _hit("第37條", hybrid_score=0.0)
+    hit.retrieval_mode = "structural_section"
+
+    assert not rag_needs_web_search([hit])
 
 
 def test_prompt_requires_evidence_only_citations():

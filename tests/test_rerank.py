@@ -47,6 +47,23 @@ def test_is_reranker_query_detects_generic_comparison_intent(query, expected):
     assert is_reranker_query(query) is expected
 
 
+def test_exhaustive_penalty_query_maps_to_penalty_section_and_synonyms():
+    from app.query_analysis import (
+        exhaustive_section_heading,
+        expand_regulatory_query,
+        is_exhaustive_query,
+    )
+
+    query = "請說明消防法所有懲處條款"
+
+    assert is_exhaustive_query(query)
+    assert exhaustive_section_heading(query) == "罰則"
+    expanded = expand_regulatory_query(query)
+    assert "處罰" in expanded
+    assert "罰鍰" in expanded
+    assert exhaustive_section_heading("請說明消防法第37條") is None
+
+
 def test_ollama_reranker_prioritizes_answering_article(monkeypatch):
     from app import rerank
 

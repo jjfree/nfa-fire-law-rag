@@ -316,3 +316,74 @@ P0/P1 implementation result (2026-09-16)
   pre-existing app/cli.py B008 ignored); git diff --check passed. The regenerated system
   manual PDF has 8 pages; all pages were rendered and visually inspected, and pypdf
   confirmed the new reprocess-current, parser_revision, and cross-reference text.
+
+Proposed P0/P1: exhaustive penalty-clause retrieval (2026-09-24)
+
+Observed evidence
+- Query: 「請說明消防法所有懲處條款」 with the frontend result count set to 20.
+- 消防法第37條 is present in the current local corpus and exact-article lookup succeeds,
+  but its original hybrid rank is 83 globally and 62 within 消防法.
+- The original top 20 contains 18 消防法 chunks and 2 chunks from other laws.
+- 消防法第六章「罰則」contains 21 current substantive provisions from 第33條 through
+  第44條 when inserted articles are counted and the deleted 第45條 is excluded. A hard
+  20-result cap therefore cannot satisfy an exhaustive request even with ideal ranking.
+- 「懲處」does not share a 2/3-character lexical n-gram with the statutory terms「罰則」
+  and「處罰」. The query is not currently classified as broad/exhaustive and does not
+  invoke the comparison/scope LLM reranker, so hash-vector differences dominate tied
+  title-level lexical scores.
+
+P0
+1. Detect exhaustive intent such as 所有、全部、完整、逐條、每一條 and map legal
+   penalty aliases such as 懲處、處罰、裁罰、罰則、罰鍰、罰金、刑責.
+2. When an exhaustive penalty request names one exact law, bypass hybrid top-k and retrieve
+   the current 「罰則」 section structurally by exact law title and chapter heading, ordered
+   by stored provision sequence; exclude deleted-only provisions.
+3. Return all structural matches even when they exceed the ordinary top-k display setting.
+   Expose retrieval mode, scope, total/returned counts, and completeness so the UI/API/MCP
+   cannot silently describe a capped result as「所有」.
+4. Prevent low placeholder scores from triggering web fallback for complete structural
+   results, while preserving normal fallback behavior for hybrid searches.
+5. Add regression coverage proving that the exact reported query includes 第37條, returns
+   all 21 substantive penalty provisions in sequence, and includes no other law.
+
+P1
+1. Expand penalty synonyms for ordinary hybrid queries and let chapter headings contribute
+   lexical evidence without changing structural-mode ordering.
+2. Keep original hybrid scores for normal search; label structural evidence as chapter-order
+   retrieval instead of presenting synthetic hybrid/vector/lexical values.
+3. Make the frontend explain that the result-count slider is the normal-query limit and that
+   exhaustive section queries may expand beyond it; display explicit coverage such as 21/21.
+4. Compact repeated source provenance in the LLM evidence prompt so a complete same-law
+   section remains within smaller model contexts without dropping article text or citations.
+5. Add query-analysis, retrieval, answer fallback, Streamlit metadata, API/MCP contract, and
+   real-corpus regression tests; align README, system manual, frontend guide, screenshots and
+   generated user-facing artifacts as required by the visible behavior change.
+
+Acceptance criteria
+- The reported query returns the 21 non-deleted provisions in 消防法第六章「罰則」,
+  including 第37條, in stored sequence and with retrieval_complete=true.
+- No unrelated law occupies a structural result slot, and deleted 第45條 is excluded.
+- Ordinary questions keep the existing deterministic hybrid/rerank behavior and top_k cap.
+- The frontend shows structural retrieval and 21/21 coverage; it never claims completeness
+  when returned_matches is below total_matches.
+- Full offline pytest, focused Ruff, artifact rebuild/inspection, and git diff checks pass
+  before commit and push.
+
+P0/P1 implementation result (2026-09-24)
+- Added exhaustive-intent and penalty-topic detection plus bounded statutory synonym
+  expansion for ordinary lexical retrieval.
+- Added exact-law/current-version structural section retrieval ordered by LawChunk.seq;
+  it bypasses the ordinary top_k cap, excludes deleted-only provisions, and returns
+  mode/scope/total/returned/complete metadata through Streamlit, FastAPI, and MCP.
+- Structural evidence is labelled as chapter-order retrieval, does not expose synthetic
+  hybrid scores, and does not trigger web fallback from its zero placeholder scores.
+- Repeated same-law provenance is compacted in the LLM prompt while preserving every
+  provision text and citation number.
+- Real-corpus verification returned 21/21 current substantive provisions for 消防法
+  第六章「罰則」in sequence, included 第37條, excluded deleted 第45條, and returned no
+  unrelated law even though the requested top_k was 20.
+- Validation: 95 offline tests passed, focused Ruff and git diff checks passed, the live
+  Streamlit UI displayed 21/21 structural coverage, and all 15 generated PDF pages were
+  rendered and visually inspected. The DOCX passed ZIP/OOXML, image, and key-text checks;
+  direct DOCX rasterization remains unavailable because bundled LibreOffice is absent,
+  as recorded in docs/DEV_NOTES.md.

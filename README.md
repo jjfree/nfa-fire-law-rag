@@ -224,6 +224,12 @@ RAG 證據數；若另有 Web 補充，其編號會接續在本機結果之後�
 回答證據會先列直接涵蓋明確對象的條文，再列相關母法；這只調整回答證據順序，卡片
 顯示的 hybrid/vector/lexical 仍是原始檢索分數，不代表法律位階。
 
+若問題同時明確指定單一法規、使用「所有／全部／完整／逐條」等完整列舉語句，並詢問
+「懲處／處罰／裁罰／罰則」主題，回答入口會改用法規章節結構檢索：精確限制該法規，
+依「罰則」章節中的條文順序取回全部現行實質條文，排除只有「刪除」標記的條文。此模式
+可超過一般 `top_k`，並在 `retrieval` 中回報 `mode`、`total_matches`、
+`returned_matches`、`complete` 與章節範圍；普通查詢仍維持原本的 hybrid top-k 行為。
+
 Streamlit 前端會將已驗證的 `[N]` 引用轉成頁內連結，點擊後跳到並展開對應的本機
 RAG 條文或 Web 補充證據。本機證據預設依 `[1]` 至 `[N]` 的引用編號順序顯示，不再因相同法規集中而產生跳號；
 回答下方另顯示模型、實際輸出 token 數、當次有效輸出上限、中文生成狀態與重試次數，方便判斷是否截斷；Ollama 的原始 `done_reason` 仍保留在回應資料中供除錯使用。
@@ -266,6 +272,9 @@ OpenAI API key，也不會把檢索不到的內容編造成法律結論。若已
 證據不足時也會顯示允許清單內的官方 web 補充來源。這是本機只讀查詢介面，
 尚未加入登入驗證或遠端部署能力。
 
+頁面載入、回答完成或切換既有對話時，視窗會停留在該對話最後一輪問題的起點，
+方便先確認問題再閱讀回答，不會自動捲到最下方。
+
 ## 6. MCP
 
 MCP server 使用 stdio transport：
@@ -279,6 +288,9 @@ python -m app.mcp_server
 - `search_fire_law(query, top_k=8, law_title=None)`
 - `ask_fire_law(query, top_k=8, law_title=None)`
 - `get_fire_law_article(law_title, article)`
+
+`ask_fire_law` 與 `/v1/ask` 會額外回傳 `retrieval` 覆蓋資訊；完整章節模式下，
+`top_k` 是一般查詢設定，不會靜默截斷「所有」條文。
 - `list_fire_laws()`
 - `list_law_versions(law_id)`
 

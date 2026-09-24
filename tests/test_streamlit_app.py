@@ -6,7 +6,9 @@ from app.streamlit_app import (
     build_evidence_cards,
     build_response,
     evidence_anchor,
+    latest_user_message_index,
     linkify_citations,
+    question_anchor,
 )
 
 
@@ -92,6 +94,35 @@ def test_build_response_handles_empty_retrieval():
     assert "gemma4:31b-cloud" in ANSWER_MODEL_OPTIONS
 
 
+def test_build_response_reports_complete_structural_coverage():
+    hit = FakeHit(
+        law_title="消防法",
+        article_label="第37條",
+        heading="第六章 罰則",
+        content="違反規定者，依下列規定處罰。",
+        source_url="https://law.nfa.gov.tw/test",
+        version_no=1,
+        vector_score=0.0,
+        lexical_score=0.0,
+        hybrid_score=0.0,
+    )
+    hit.retrieval_mode = "structural_section"
+    retrieval = {
+        "mode": "structural_section",
+        "returned_matches": 21,
+        "total_matches": 21,
+        "complete": True,
+        "scope_law_title": "消防法",
+        "scope_heading": "第六章 罰則",
+    }
+
+    response = build_response("請說明消防法所有懲處條款", [hit] * 21, retrieval)
+
+    assert response["retrieval"] == retrieval
+    assert "章節結構完整取回 21／21 筆" in response["summary"]
+    assert response["results"][0]["retrieval_mode"] == "structural_section"
+
+
 def test_linkify_citations_targets_matching_evidence_anchors():
     answer = "消防安全設備包含多種類別。[4][6]"
 
@@ -116,6 +147,53 @@ def test_evidence_anchor_has_stable_id():
     assert evidence_anchor(4, "conversation-2-message-3") == (
         '<span id="conversation-2-message-3-4"></span>'
     )
+
+
+def test_question_anchor_marks_only_the_latest_question_for_viewport_alignment():
+    assert question_anchor(2, 3) == (
+        '<span id="conversation-2-message-3-question" '
+        'class="nfa-question-anchor"></span>'
+    )
+    assert question_anchor(2, 3, latest=True) == (
+        '<span id="conversation-2-message-3-question" '
+        'class="nfa-question-anchor" data-nfa-latest-question="true"></span>'
+    )
+
+
+def test_latest_user_message_index_supports_loading_or_switching_conversations():
+    messages = [
+        type("Message", (), {"role": "user"})(),
+        type("Message", (), {"role": "assistant"})(),
+        type("Message", (), {"role": "user"})(),
+        type("Message", (), {"role": "assistant"})(),
+    ]
+
+    assert latest_user_message_index(messages) == 2
+    assert latest_user_message_index([]) is None
+
+
+def test_latest_question_scroll_retries_with_a_conversation_specific_anchor():
+    from app import streamlit_app
+
+    class FakeStreamlit:
+        html_body = ""
+        unsafe_allow_javascript = False
+
+        def html(self, body: str, *, unsafe_allow_javascript: bool) -> None:
+            self.html_body = body
+            self.unsafe_allow_javascript = unsafe_allow_javascript
+
+    fake_st = FakeStreamlit()
+    streamlit_app._render_latest_question_scroll(
+        fake_st,
+        "conversation-7-message-4-question",
+    )
+
+    assert 'const targetId = "conversation-7-message-4-question";' in fake_st.html_body
+    assert "alignQuestion();" in fake_st.html_body
+    assert "setInterval" in fake_st.html_body
+    assert "3000" in fake_st.html_body
+    assert fake_st.unsafe_allow_javascript is True
 
 
 def test_build_evidence_cards_opens_target_with_fragment_without_query_reload():
@@ -177,6 +255,26 @@ def test_build_evidence_cards_preserves_number_order_across_repeated_laws():
     assert cards.index("[2] 法規乙") < cards.index("[3] 法規甲")
 
 
+def test_build_evidence_cards_labels_structural_results_without_fake_scores():
+    local = {
+        "law_title": "消防法",
+        "article_label": "第37條",
+        "heading": "第六章 罰則",
+        "content": "依下列規定處罰。",
+        "source_url": "https://law.nfa.gov.tw/test",
+        "version_no": 1,
+        "vector_score": 0.0,
+        "lexical_score": 0.0,
+        "hybrid_score": 0.0,
+        "retrieval_mode": "structural_section",
+    }
+
+    cards = build_evidence_cards([local], [])
+
+    assert "結構式章節檢索 · 依條文順序" in cards
+    assert "hybrid=0.0000" not in cards
+
+
 def test_search_question_adds_answer_layer(monkeypatch):
     from app import streamlit_app
 
@@ -191,9 +289,30 @@ def test_search_question_adds_answer_layer(monkeypatch):
         lexical_score=0.9,
         hybrid_score=0.86,
     )
-    monkeypatch.setattr(streamlit_app, "build_response", lambda query, hits: {"results": []})
     monkeypatch.setattr(
-        "app.rerank.retrieve_answer_hits", lambda query, top_k, law_title: [hit]
+        streamlit_app,
+        "build_response",
+        lambda query, hits, retrieval=None: {"results": [], "retrieval": retrieval},
+    )
+    evidence = type(
+        "Evidence",
+        (),
+        {
+            "hits": [hit],
+            "metadata": lambda self: {
+                "mode": "hybrid",
+                "requested_top_k": 5,
+                "returned_matches": 1,
+                "total_matches": 1,
+                "complete": None,
+                "scope_law_title": None,
+                "scope_heading": None,
+            },
+        },
+    )()
+    monkeypatch.setattr(
+        "app.rerank.retrieve_answer_evidence",
+        lambda query, top_k, law_title: evidence,
     )
     monkeypatch.setattr(
         "app.answer.answer_question",

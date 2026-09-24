@@ -66,6 +66,56 @@ def sqlite_database():
                 )
             )
 
+        penalty_articles = [
+            "第33條",
+            "第34條",
+            "第35條",
+            "第35-1條",
+            "第35-2條",
+            "第36條",
+            "第37條",
+            "第38條",
+            "第39條",
+            "第40條",
+            "第41條",
+            "第41-1條",
+            "第42條",
+            "第42-1條",
+            "第42-2條",
+            "第42-3條",
+            "第42-4條",
+            "第43條",
+            "第43-1條",
+            "第43-2條",
+            "第44條",
+        ]
+        for offset, article in enumerate(penalty_articles, start=5):
+            content = f"{article} 違反本法規定者，處新臺幣一萬元以上五萬元以下罰鍰。"
+            vector = embedder.embed([f"消防法 第六章 罰則 {article} {content}"])[0]
+            db.add(
+                LawChunk(
+                    version_id=version.id,
+                    seq=offset,
+                    article_label=article,
+                    heading="第六章 罰則",
+                    content=content,
+                    embedding=embedding_to_storage(vector),
+                )
+            )
+        deleted_content = "第45條 （刪除）"
+        db.add(
+            LawChunk(
+                version_id=version.id,
+                seq=26,
+                article_label="第45條",
+                heading="第六章 罰則",
+                content=deleted_content,
+                embedding=embedding_to_storage(
+                    embedder.embed([f"消防法 第六章 罰則 {deleted_content}"])[0]
+                ),
+            )
+        )
+
         related_law = Law(
             source_key="test:authority-guidance",
             title="消防主管機關作業規定",
@@ -105,7 +155,7 @@ def sqlite_database():
 def test_sqlite_creates_fts5_index_for_current_chunks():
     with session_scope() as db:
         count = db.execute(text("SELECT count(*) FROM law_chunks_fts")).scalar_one()
-    assert count == 5
+    assert count == 27
 
 
 def test_sqlite_hybrid_search_combines_fts5_and_numpy():
@@ -191,6 +241,29 @@ def test_action_query_still_prefers_obligation_over_definition():
 def test_sqlite_exact_article_matches_current_data():
     hits = exact_article("消防法", "第13條")
     assert [hit.article_label for hit in hits] == ["第13條"]
+
+
+def test_exhaustive_penalty_query_returns_complete_structural_section():
+    from app.answer import rag_needs_web_search
+    from app.rerank import retrieve_answer_evidence
+
+    evidence = retrieve_answer_evidence(
+        "請說明消防法所有懲處條款",
+        top_k=20,
+    )
+
+    assert evidence.mode == "structural_section"
+    assert evidence.complete is True
+    assert evidence.total_matches == 21
+    assert len(evidence.hits) == 21
+    assert evidence.scope_law_title == "消防法"
+    assert evidence.scope_heading == "第六章 罰則"
+    assert evidence.hits[0].article_label == "第33條"
+    assert evidence.hits[-1].article_label == "第44條"
+    assert any(hit.article_label == "第37條" for hit in evidence.hits)
+    assert all(hit.law_title == "消防法" for hit in evidence.hits)
+    assert all(hit.article_label != "第45條" for hit in evidence.hits)
+    assert not rag_needs_web_search(evidence.hits)
 
 
 def test_conversations_persist_title_and_exchange():

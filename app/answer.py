@@ -57,10 +57,18 @@ def build_evidence_context(
 ) -> str:
     """Build a numbered, provenance-preserving context block for the LLM."""
     sections: list[str] = []
+    source_first_seen: dict[tuple[str, int, str], int] = {}
     for index, hit in enumerate(hits, start=start_index):
         article = hit.article_label or "未標示條號"
         heading = hit.heading or "未標示標題"
         content = hit.content[:max_chars_per_hit]
+        source_key = (hit.law_title, hit.version_no, hit.source_url)
+        first_source_index = source_first_seen.setdefault(source_key, index)
+        source_label = (
+            hit.source_url
+            if first_source_index == index
+            else f"同 [{first_source_index}] 法規版本與來源"
+        )
         sections.append(
             "\n".join(
                 [
@@ -68,7 +76,7 @@ def build_evidence_context(
                     f"條號：{article}",
                     f"標題：{heading}",
                     f"版本：{hit.version_no}",
-                    f"來源 URL：{hit.source_url}",
+                    f"來源 URL：{source_label}",
                     f"條文內容：\n{content}",
                 ]
             )
@@ -344,6 +352,8 @@ def rag_needs_web_search(hits: list[Any]) -> bool:
     """Use a conservative pre-generation gate for the optional web fallback."""
     if not hits:
         return True
+    if all(getattr(hit, "retrieval_mode", "hybrid") == "structural_section" for hit in hits):
+        return False
     settings = get_settings()
     top_score = max(float(getattr(hit, "hybrid_score", 0.0)) for hit in hits)
     return top_score < settings.web_search_min_hybrid_score

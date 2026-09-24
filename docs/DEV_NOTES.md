@@ -59,3 +59,9 @@ Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8501/_stcore/health
 文件技能的 `render_docx.py` 需要 bundled LibreOffice `soffice.exe`，但目前 workspace dependencies 未提供 LibreOffice，且工具會回報 `LibreOffice soffice.exe was not found on PATH`。依專案規則，不應改用使用者自行安裝的桌面 LibreOffice，也不要為例行驗證安裝系統軟體。
 
 目前的可重現替代驗證為：使用 bundled Python 執行 `scripts\build_frontend_user_guide.py --format all`，以同一份 Markdown 與產生器建立 DOCX/PDF；對 PDF 的每一頁使用 bundled Poppler 轉成 PNG 並逐頁目視檢查，同時以 `python-docx` 與 ZIP 測試檢查 DOCX 段落、表格、內嵌圖片及 OOXML 壓縮檔完整性。若未來 workspace dependencies 提供 bundled LibreOffice，再恢復 `render_docx.py` 的直接 DOCX 視覺驗證，不要每次重新搜尋或嘗試使用系統版 `soffice.exe`。
+
+## 2026-09-24：新增跨模組符號後必須重啟 Streamlit
+
+Streamlit 的「Rerun」可重載主頁程式，但已載入的專案模組可能仍保留在 Python process 的 module cache。若 `app/streamlit_app.py` 改為匯入 `app/rerank.py`、`app/search.py` 等模組中新加入的函式，僅按畫面上的 Rerun 可能出現 `ImportError: cannot import name ...`，即使離線 pytest 與新的 Python process 已通過。
+
+遇到此情況，應先確認 8501 port 的擁有者確實是本 repository 的 Python／Streamlit 開發程序，再精確終止該 PID，使用 repository-local `.venv\Scripts\python.exe` 重新啟動 Streamlit，並檢查 `http://127.0.0.1:8501/_stcore/health` 回傳 `200 ok`。不要終止名稱相同但未監聽本專案 port 的其他 Python process，也不要把模組快取造成的首次 ImportError誤判成新程式碼不存在。

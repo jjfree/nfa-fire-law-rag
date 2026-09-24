@@ -6,6 +6,7 @@ not require the optional UI dependency.
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Iterable
 from datetime import UTC
@@ -15,6 +16,17 @@ from typing import Any
 ANSWER_MODEL_OPTIONS = ("gemma4:e2b", "gemma4:e4b", "gemma4:31b-cloud")
 _CITATION_RE = re.compile(r"\[(\d+)\]")
 _OUTPUT_LIMIT_REASONS = {"length", "max_tokens", "token_limit"}
+_QUESTION_ANCHOR_CSS = """
+<style>
+.nfa-question-anchor {
+  display: block;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  scroll-margin-top: 5rem;
+}
+</style>
+"""
 
 
 def build_answer_diagnostic(response: dict[str, Any]) -> str:
@@ -89,6 +101,61 @@ def evidence_anchor(index: int, anchor_prefix: str = "evidence") -> str:
     if index < 1:
         raise ValueError("evidence anchor index must be positive")
     return f'<span id="{escape(anchor_prefix, quote=True)}-{index}"></span>'
+
+
+def question_anchor(
+    conversation_id: int, message_index: int, latest: bool = False
+) -> str:
+    """Return a stable, zero-height anchor placed immediately before a question."""
+    anchor_id = f"conversation-{conversation_id}-message-{message_index}-question"
+    latest_attribute = ' data-nfa-latest-question="true"' if latest else ""
+    return (
+        f'<span id="{escape(anchor_id, quote=True)}" '
+        f'class="nfa-question-anchor"{latest_attribute}></span>'
+    )
+
+
+def latest_user_message_index(messages: Iterable[Any]) -> int | None:
+    """Return the rendered index of the most recent user question, if any."""
+    latest_index: int | None = None
+    for index, message in enumerate(messages):
+        if message.role == "user":
+            latest_index = index
+    return latest_index
+
+
+def _render_latest_question_scroll(st: Any, anchor_id: str | None) -> None:
+    """Keep the viewport at the latest question after Streamlit finishes rendering."""
+    if anchor_id is None:
+        return
+
+    scroll_script = """
+<script>
+(() => {
+  const targetId = __TARGET_ID__;
+  const startedAt = Date.now();
+  const alignQuestion = () => {
+    const target = document.getElementById(targetId);
+    if (!target) return;
+    target.scrollIntoView({block: "start", inline: "nearest", behavior: "auto"});
+  };
+
+  alignQuestion();
+  const alignmentTimer = window.setInterval(() => {
+    alignQuestion();
+    if (Date.now() - startedAt >= 3000) {
+      window.clearInterval(alignmentTimer);
+    }
+  }, 100);
+})();
+</script>
+""".replace("__TARGET_ID__", json.dumps(anchor_id))
+    # `unsafe_allow_javascript` is available in the supported Streamlit runtime
+    # used by the launcher. Keep a small fallback for older optional UI installs.
+    try:
+        st.html(scroll_script, unsafe_allow_javascript=True)
+    except (AttributeError, TypeError):
+        st.markdown(scroll_script, unsafe_allow_html=True)
 
 
 _EVIDENCE_CSS = """
@@ -179,9 +246,12 @@ def build_evidence_cards(
         article = row["article_label"]
         heading = f"｜{row['heading']}" if row["heading"] else ""
         title = f"[{index}] {law_title}｜{article}{heading}｜版本 {row['version_no']}"
-        metadata = "hybrid={:.4f} · vector={:.4f} · lexical={:.4f}".format(
-            row["hybrid_score"], row["vector_score"], row["lexical_score"]
-        )
+        if row.get("retrieval_mode") == "structural_section":
+            metadata = "結構式章節檢索 · 依條文順序"
+        else:
+            metadata = "hybrid={:.4f} · vector={:.4f} · lexical={:.4f}".format(
+                row["hybrid_score"], row["vector_score"], row["lexical_score"]
+            )
         cards.append(
             _evidence_card(
                 index=index,
@@ -207,7 +277,11 @@ def build_evidence_cards(
     return "".join(cards)
 
 
-def build_response(query: str, hits: Iterable[Any]) -> dict[str, Any]:
+def build_response(
+    query: str,
+    hits: Iterable[Any],
+    retrieval: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Convert retrieval hits into a UI-safe, provenance-preserving response."""
     rows = []
     for hit in hits:
@@ -222,17 +296,28 @@ def build_response(query: str, hits: Iterable[Any]) -> dict[str, Any]:
                 "vector_score": float(hit.vector_score),
                 "lexical_score": float(hit.lexical_score),
                 "hybrid_score": float(hit.hybrid_score),
+                "retrieval_mode": getattr(hit, "retrieval_mode", "hybrid"),
             }
         )
 
     if not rows:
         summary = "本機 RAG 沒有找到符合的現行法規條文。請改用更具體的關鍵詞、法規名稱或條號。"
+    elif retrieval and retrieval.get("mode") == "structural_section":
+        total = int(retrieval.get("total_matches") or len(rows))
+        summary = (
+            f"本機 RAG 依 {retrieval.get('scope_law_title')}「"
+            f"{retrieval.get('scope_heading')}」章節結構完整取回 "
+            f"{len(rows)}／{total} 筆現行實質條文，並依條文順序顯示。"
+        )
     else:
         summary = (
             f"本機 RAG 找到 {len(rows)} 筆現行版本相關條文。以下內容是檢索依據，"
             "請以原始法規與主管機關正式解釋為準。"
         )
-    return {"query": query, "summary": summary, "results": rows}
+    response = {"query": query, "summary": summary, "results": rows}
+    if retrieval:
+        response["retrieval"] = retrieval
+    return response
 
 
 def search_question(
@@ -243,11 +328,11 @@ def search_question(
 ) -> dict[str, Any]:
     """Run retrieval and local evidence-grounded answer generation."""
     from app.answer import answer_question
-    from app.rerank import retrieve_answer_hits
+    from app.rerank import retrieve_answer_evidence
 
-    hits = retrieve_answer_hits(query, top_k=top_k, law_title=law_title)
-    response = build_response(query, hits)
-    response.update(answer_question(query, hits, model=llm_model))
+    evidence = retrieve_answer_evidence(query, top_k=top_k, law_title=law_title)
+    response = build_response(query, evidence.hits, evidence.metadata())
+    response.update(answer_question(query, evidence.hits, model=llm_model))
     return response
 
 
@@ -297,6 +382,23 @@ def _render_response(
             st.info(response["answer"])
     if response.get("answer_model"):
         st.caption(build_answer_diagnostic(response))
+    retrieval = response.get("retrieval", {})
+    if retrieval.get("mode") == "structural_section":
+        returned = int(retrieval.get("returned_matches") or len(local_results))
+        total = int(retrieval.get("total_matches") or returned)
+        scope = "／".join(
+            value
+            for value in (
+                retrieval.get("scope_law_title"),
+                retrieval.get("scope_heading"),
+            )
+            if value
+        )
+        message = f"完整列舉模式：{scope}，證據覆蓋 {returned}／{total} 筆。"
+        if retrieval.get("complete") is True and returned == total:
+            st.success(message)
+        else:
+            st.warning(f"{message}目前結果未完整，請勿視為全部條文。")
     web_status = response.get("web_search_status")
     if web_status == "used":
         st.caption("本次 RAG 證據不足，已補充允許清單內的官方網頁資料。")
@@ -427,6 +529,7 @@ def main() -> None:
         st.divider()
         st.header("檢索設定")
         top_k = st.slider("顯示結果數", min_value=1, max_value=20, value=8)
+        st.caption("一般查詢依此數量顯示；『所有／全部／逐條』等完整列舉問題可能自動展開超過此數量。")
         try:
             titles = ["全部法規", *_law_titles()]
         except Exception as exc:  # noqa: BLE001 - show local DB setup errors in the UI
@@ -461,10 +564,26 @@ def main() -> None:
     st.caption(f"目前對話：{active_title}")
 
     st.caption("本機 SQLite + FTS5 + NumPy 混合檢索；回答以現行法規條文與來源為依據。")
+    st.markdown(_QUESTION_ANCHOR_CSS, unsafe_allow_html=True)
 
     messages = get_messages(active_id)
+    latest_question_index = latest_user_message_index(messages)
+    latest_question_anchor_id = (
+        f"conversation-{active_id}-message-{latest_question_index}-question"
+        if latest_question_index is not None
+        else None
+    )
     for message_index, message in enumerate(messages):
         message_anchor_prefix = f"conversation-{active_id}-message-{message_index}"
+        if message.role == "user":
+            st.markdown(
+                question_anchor(
+                    active_id,
+                    message_index,
+                    latest=message_index == latest_question_index,
+                ),
+                unsafe_allow_html=True,
+            )
         with st.chat_message(message.role):
             if message.role == "user":
                 st.write(message.content)
@@ -477,11 +596,16 @@ def main() -> None:
 
     query = st.chat_input("例如：消防法第13條對管理權人有什麼要求？")
     if not query:
+        _render_latest_question_scroll(st, latest_question_anchor_id)
         return
 
     # Render the submitted question before starting retrieval/LLM work so the
     # user gets immediate feedback even when the local model takes a while.
     with st.chat_message("user"):
+        st.markdown(
+            question_anchor(active_id, len(messages), latest=True),
+            unsafe_allow_html=True,
+        )
         st.write(query)
     with st.chat_message("assistant"), st.spinner("正在檢索法規並整理回答…"):
         try:
@@ -499,6 +623,10 @@ def main() -> None:
             message_anchor_prefix = f"conversation-{active_id}-message-{len(messages) + 1}"
             _render_response(st, response, message_anchor_prefix)
             save_exchange(active_id, query, response=response)
+    _render_latest_question_scroll(
+        st,
+        f"conversation-{active_id}-message-{len(messages)}-question",
+    )
     st.rerun()
 
 
