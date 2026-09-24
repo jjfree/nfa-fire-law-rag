@@ -39,7 +39,7 @@ not required for the Windows SQLite target.
 | Evaluation | `eval/phase2_queries.json`, `app/evaluation.py`, CLI `eval` | Seed evaluation implemented; corpus-dependent |
 | Config | `app/config.py`, `.env.example`; local `.env` ignored | Implemented; secrets kept local |
 | Docs | `README.md`, `AGENTS.md`, five `docs/` files, versioned screenshots, system-manual PDF, and frontend Word/PDF guides | README, full system manual, frontend user guide, developer notes, editable/print deliverables, and operational documentation are present |
-| Windows launchers | `scripts/start_streamlit.bat` | Implemented; starts the local UI and opens the browser without crawling or installing |
+| Windows launchers | `scripts/start_streamlit.bat` | Implemented; safely recognizes repository-owned venv process trees, restarts the local UI, and opens the browser without crawling or installing |
 | Requirements files | No `requirements*.txt`/`.in`; dependencies in `pyproject.toml` | `pyproject.toml` is the source of truth |
 | Data | Ignored local `data/nfa_fire_law.db` (~128 MiB) and `data/test.txt` | Local/generated; not commit candidates |
 
@@ -125,7 +125,8 @@ future capability, **可沿用** means keep as the current extension point, and
   counts, current-version evidence, scores, source links, and clickable answer
   citations that jump to and expand stable evidence anchors without an API key.
 - `scripts/start_streamlit.bat` checks the repository `.venv`, starts Streamlit on
-  loopback, and opens the local Q&A page automatically.
+  loopback, safely follows a bounded Windows venv parent chain when replacing its own
+  prior listener, and opens the local Q&A page automatically.
 - Offline fixtures cover crawler discovery, URL identity, fetch behavior, parsing,
   attachment handling, hashing, embeddings, SQLite/FTS5, and ingestion probing.
 
@@ -251,7 +252,8 @@ check, and a pytest cache permission warning. They did not fail tests.
   `tests/test_streamlit_app.py` — offline answer-layer, reranking, web-fallback, and UI
   integration tests.
 - `scripts/start_streamlit.bat` — Windows launcher that stops only the repository's
-  prior Streamlit process on the configured local port, waits for the health endpoint,
+  prior Streamlit process tree on the configured local port (including a base-Python
+  listening child beneath the repository venv parent), waits for the health endpoint,
   and then opens the local Q&A URL.
 - `.streamlit/config.toml` — disables Streamlit usage statistics for local-only operation.
 - `tests/test_streamlit_app.py`, `tests/test_sqlite_backend.py` — UI response/provenance

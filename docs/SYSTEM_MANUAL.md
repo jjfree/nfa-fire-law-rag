@@ -212,7 +212,7 @@ parser/chunk 規則升版後，先執行 dry-run；此步驟不連網也不寫�
 
 ### 6.6 啟動 Streamlit 前端
 
-方法一：雙擊 `scripts\start_streamlit.bat`。啟動器會檢查 `.venv` 與 Streamlit，確認 `8501` port，僅停止本 repository 自己留下的舊 Streamlit process，等待 health endpoint 後開啟瀏覽器。
+方法一：雙擊 `scripts\start_streamlit.bat`。啟動器會檢查 `.venv` 與 Streamlit，確認 `8501` port，僅停止本 repository 自己留下的舊 Streamlit process，等待 health endpoint 後開啟瀏覽器。Windows venv 可能讓監聽子程序顯示為系統 Python，因此辨識時會向上檢查最多四層父程序；只有命令列同時包含 repository 絕對路徑與 `streamlit` 才會終止該程序樹，其他占用者仍維持 fail-closed。
 
 方法二：PowerShell 手動啟動：
 
@@ -293,7 +293,7 @@ MCP 使用 stdio；在 MCP client 設定中以 repository 內的 Python 啟動�
 | Ollama 回答失敗 | 先使用 `/v1/search` 或查看證據；確認 Ollama URL、模型與金鑰。檢索本身不依賴 Ollama |
 | 回答顯示未完整 | 查看生成狀態、實際輸出／上限與重試次數；縮小問題或減少結果數。系統不會把長度截斷標成正常答案 |
 | Cloud/web fallback 不可用 | 確認 `OLLAMA_API_KEY`、允許網域與 HTTPS；未設定時屬預期的 unavailable 狀態 |
-| Streamlit port 被占用 | 關閉占用 `8501` 的應用程式，或修改啟動命令的 port；不要任意終止不相關 process |
+| Streamlit port 被占用 | 重新執行新版啟動器；它會辨識本 repository 的 Windows venv 父子程序鏈並安全重啟。若仍顯示不相關 PID，表示無法安全確認擁有者，應人工核對後關閉或修改 port，不要任意終止 process |
 | 切換 embedding provider | 使用新的 `DATABASE_URL` 或受控 re-embedding 流程，先備份 SQLite，避免混用向量 |
 | crawl 顯示 `reprocess_required` | 先執行 `reprocess-current` dry-run，備份 SQLite 後再以 `--apply` 重建現行衍生資料 |
 
@@ -303,7 +303,7 @@ MCP 使用 stdio；在 MCP client 設定中以 repository 內的 Python 啟動�
 
 | 日期 | 內容 |
 |---|---|
-| 2026-09-24 | 加入完整列舉意圖、罰則章節結構檢索、覆蓋 metadata、同義詞擴展與重複來源 prompt 壓縮 |
+| 2026-09-24 | 修正 Windows venv 啟動器辨識；加入完整列舉罰則檢索與覆蓋 metadata |
 | 2026-09-22 | 問答載入、回答完成及切換對話時，視窗定位到最新問題起點 |
 | 2026-09-17 | 證據卡改為依引用編號順序顯示，避免同法規集中顯示造成跳號 |
 | 2026-09-16 | 回答診斷列加入實際輸出 token 數，並將原始終止碼轉為易懂的中文生成狀態 |
@@ -312,6 +312,4 @@ MCP 使用 stdio；在 MCP client 設定中以 repository 內的 Python 啟動�
 | 2026-09-16 | 統一產品名稱為「台灣消防法規 RAG」，來源說明改用中性名稱 |
 | 2026-09-16 | 複合包含問題先列直接對象條文，再列相關母法，並保留原始檢索分數 |
 | 2026-09-15 | 加入複合包含問題的證據覆蓋、Web 明確對象過濾，以及統一的本機／Web 引用編號呈現 |
-| 2026-09-14 | 建立本系統說明書，納入架構、爬取設計、安裝啟動與 Streamlit 操作 |
-| 2026-09-14 | 將文件對齊規範移至 `AGENTS.md` 第 17 節，保留本手冊的維護入口 |
-| 2026-09-14 | 建立由 Markdown 產生的易讀 PDF 版本；後續異動須重新產製並檢查 PDF |
+| 2026-09-14 | 建立系統說明書與 Markdown 產生的 PDF，納入架構、爬取、啟動、Streamlit 操作及 `AGENTS.md` 文件對齊規範 |

@@ -65,3 +65,25 @@ Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8501/_stcore/health
 Streamlit 的「Rerun」可重載主頁程式，但已載入的專案模組可能仍保留在 Python process 的 module cache。若 `app/streamlit_app.py` 改為匯入 `app/rerank.py`、`app/search.py` 等模組中新加入的函式，僅按畫面上的 Rerun 可能出現 `ImportError: cannot import name ...`，即使離線 pytest 與新的 Python process 已通過。
 
 遇到此情況，應先確認 8501 port 的擁有者確實是本 repository 的 Python／Streamlit 開發程序，再精確終止該 PID，使用 repository-local `.venv\Scripts\python.exe` 重新啟動 Streamlit，並檢查 `http://127.0.0.1:8501/_stcore/health` 回傳 `200 ok`。不要終止名稱相同但未監聽本專案 port 的其他 Python process，也不要把模組快取造成的首次 ImportError誤判成新程式碼不存在。
+
+## 2026-09-24：venv 的監聽子程序可能顯示為系統 Python
+
+### 症狀與根因
+
+重新雙擊 `scripts/start_streamlit.bat` 時，畫面顯示 8501 被「不相關程序」占用後立即結束，但 `/_stcore/health` 實際仍回傳 `200 ok`。Windows venv 啟動 Streamlit 時，父程序的 executable/command line 會指向 repository-local `.venv\Scripts\python.exe`，實際監聽 8501 的子程序卻可能顯示為系統 Python，且命令列只保留相對路徑 `app/streamlit_app.py`。只檢查監聽 PID 本身，便無法看見 repository 絕對路徑而誤判。
+
+### 修正與安全邊界
+
+啟動器會從監聽 PID 向上檢查最多四層父程序；只有某一層命令列同時包含本 repository 絕對路徑與 `streamlit` 時，才以該匹配祖先 PID 為目標終止整棵程序樹。若有限父鏈中找不到安全匹配，仍視為其他應用程式占用並拒絕終止。驗證時應確認輸出含 `Stopped old NFA Streamlit process tree PID ...`、launcher exit code 為 0，且 health endpoint 回傳 `200 ok`。
+
+## 2026-09-24：受限代理造成 Ollama Cloud 假性斷線
+
+### 症狀與根因
+
+若從 Codex／測試工具的受限 shell 啟動 Streamlit，程序可能繼承僅供隔離網路使用的 `HTTP_PROXY`、`HTTPS_PROXY` 或 `ALL_PROXY`；目前觀察到的阻擋值為 `http://127.0.0.1:9`。此時本機 `http://127.0.0.1:11434` 仍正常，但 `gemma4:31b-cloud` 對 `https://ollama.com/api/chat` 的請求會回報 `ConnectError`。這不是 token 上限、模型不存在或 API key 驗證失敗。
+
+### 正確驗證方式
+
+- 不要在受限 shell 內清除代理變數以繞過隔離；應使用已核准的一般主機環境執行 `scripts\start_streamlit.bat`，或由使用者直接雙擊啟動。
+- 重啟後先確認 `/_stcore/health` 回傳 `200 ok`，再以極小的 Ollama Cloud 請求驗證實際模型端點；不要只用首頁可開啟來推論外網正常。
+- 診斷時只記錄代理是否存在、端點與例外類型，不得輸出 `OLLAMA_API_KEY`。若一般主機環境仍失敗，再依序檢查 DNS、TLS、防火牆、代理設定與 key 權限。
