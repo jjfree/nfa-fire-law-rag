@@ -212,16 +212,14 @@ def _evidence_card(
     content: str,
     source_url: str,
     anchor_prefix: str,
-    default_expanded: bool = False,
 ) -> str:
     anchor_id = f"{anchor_prefix}-{index}"
     safe_anchor_id = escape(anchor_id, quote=True)
     toggle_id = f"{anchor_id}-toggle"
-    checked = " checked" if default_expanded else ""
     return (
         f'<div id="{safe_anchor_id}" class="rag-evidence-card">'
         f'<input class="rag-evidence-toggle" type="checkbox" '
-        f'id="{escape(toggle_id, quote=True)}"{checked}>'
+        f'id="{escape(toggle_id, quote=True)}">'
         f'<label class="rag-evidence-header" '
         f'for="{escape(toggle_id, quote=True)}">{escape(title)}</label>'
         '<div class="rag-evidence-content">'
@@ -260,7 +258,6 @@ def build_evidence_cards(
                 content=row["content"],
                 source_url=row["source_url"],
                 anchor_prefix=anchor_prefix,
-                default_expanded=index == 1,
             )
         )
     for index, source in enumerate(web_results, start=local_count + 1):
@@ -518,17 +515,29 @@ def main() -> None:
     from app.config import get_settings
     from app.conversations import get_messages, save_exchange
     from app.db import init_db
+    from app.ui_preferences import get_display_result_count, save_display_result_count
 
     settings = get_settings()
     st.set_page_config(page_title="消防法規 RAG", page_icon="🔥", layout="wide")
     init_db()
     active_id, conversations = _ensure_active_conversation(st)
+    if "display_result_count" not in st.session_state:
+        st.session_state.display_result_count = get_display_result_count()
+
+    def persist_display_result_count() -> None:
+        save_display_result_count(st.session_state.display_result_count)
 
     with st.sidebar:
         _render_conversation_sidebar(st, conversations, active_id)
         st.divider()
         st.header("檢索設定")
-        top_k = st.slider("顯示結果數", min_value=1, max_value=20, value=8)
+        top_k = st.slider(
+            "顯示結果數",
+            min_value=1,
+            max_value=20,
+            key="display_result_count",
+            on_change=persist_display_result_count,
+        )
         st.caption("一般查詢依此數量顯示；『所有／全部／逐條』等完整列舉問題可能自動展開超過此數量。")
         try:
             titles = ["全部法規", *_law_titles()]

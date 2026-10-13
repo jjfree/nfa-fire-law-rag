@@ -132,3 +132,12 @@ class ConversationMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
+
+
+class UiPreference(Base):
+    """A local UI preference shared by Streamlit sessions using this database."""
+
+    __tablename__ = "ui_preferences"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    int_value: Mapped[int] = mapped_column(Integer)

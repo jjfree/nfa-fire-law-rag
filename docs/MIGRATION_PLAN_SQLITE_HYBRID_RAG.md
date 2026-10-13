@@ -4,6 +4,8 @@ This is a staged, reversible plan for finishing the Windows-first Taiwan fire-la
 RAG system without a large rewrite. It assumes the current repository baseline:
 SQLite is the default, FTS5 and NumPy hybrid search already exist, the crawler is
 bounded, and the PostgreSQL/Docker path remains optional and is not executed.
+The local UI now stores its last display-result count in the configured SQLite
+database; this preference is separate from law versions and the FTS5 index.
 
 ## Guardrails
 

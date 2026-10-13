@@ -1,6 +1,6 @@
 # Project Status — nfa-fire-law-rag
 
-Date: 2026-09-24
+Date: 2026-10-13
 Repository: `C:\Users\james.chang\source\nfa-fire-law-rag`
 Branch: `main` at `origin/main`; the tracked baseline was clean before this documentation change.
 
@@ -34,8 +34,8 @@ not required for the Windows SQLite target.
 | Embedding | `app/embedding.py` | Implemented deterministic hash and optional OpenAI providers |
 | Database | `app/db.py`, `app/models.py`, `scripts/init.sql` | SQLite default implemented; PostgreSQL optional |
 | API/MCP | `app/api.py`, `app/mcp_server.py` | Implemented PoC search and cited-answer interfaces with retrieval-mode and coverage metadata |
-| Browser UI | `app/streamlit_app.py`, `app/conversations.py`, `.streamlit/config.toml`, `pyproject.toml` `ui` extra | Local Streamlit Q&A/evidence interface with SQLite-persisted multi-conversation history, title editing, deletion, latest-question viewport positioning, and exhaustive-query coverage display |
-| Tests | 16 test modules plus fixtures | 95 tests passing |
+| Browser UI | `app/streamlit_app.py`, `app/conversations.py`, `app/ui_preferences.py`, `.streamlit/config.toml`, `pyproject.toml` `ui` extra | Local Streamlit Q&A/evidence interface with SQLite-persisted multi-conversation history and display-result count, title editing, deletion, latest-question viewport positioning, and exhaustive-query coverage display |
+| Tests | 17 test modules plus fixtures | 101 tests passing |
 | Evaluation | `eval/phase2_queries.json`, `app/evaluation.py`, CLI `eval` | Seed evaluation implemented; corpus-dependent |
 | Config | `app/config.py`, `.env.example`; local `.env` ignored | Implemented; secrets kept local |
 | Docs | `README.md`, `AGENTS.md`, five `docs/` files, versioned screenshots, system-manual PDF, and frontend Word/PDF guides | README, full system manual, frontend user guide, developer notes, editable/print deliverables, and operational documentation are present |
@@ -205,6 +205,7 @@ no live crawl was run.
 | Streamlit UI dependency | `1.63.0` installed in repository `.venv` |
 | Ollama hosted web-search key | Configured only in ignored local `.env`; live cloud/web request was not run |
 | repository tests | `95 passed, 30 warnings` after exhaustive-section retrieval, evidence coverage, prompt-source compaction, latest-question viewport positioning, and prior parser/versioning coverage |
+| current repository tests | `101 passed, 29 warnings` on 2026-10-13 with `--basetemp data/pytest_ui_pref_20261013`; includes UI preference persistence and validation |
 | Ruff (changed Python files) | Passed |
 | Ruff (whole repository) | Three pre-existing findings remain: one `B008` in `app/cli.py` and import ordering in two crawler modules |
 
