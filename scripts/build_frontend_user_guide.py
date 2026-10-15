@@ -288,6 +288,8 @@ def build_docx(metadata: dict[str, str], blocks: list[Block], output: Path) -> N
         if block.kind == "heading":
             style_name = "Heading 1" if block.level == 2 else "Heading 2"
             paragraph = document.add_paragraph(style=style_name)
+            if block.text == "11.1 更新紀錄":
+                paragraph.paragraph_format.page_break_before = True
             add_markdown_runs(
                 paragraph, block.text, size=16 if block.level == 2 else 12.5
             )

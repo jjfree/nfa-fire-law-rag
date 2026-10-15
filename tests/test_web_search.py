@@ -1,6 +1,7 @@
 import httpx
 import pytest
 
+from app.config import Settings
 from app.web_search import (
     OllamaWebSearchClient,
     WebSearchResult,
@@ -69,6 +70,48 @@ def test_ollama_web_search_filters_and_fetches_official_results(monkeypatch):
     assert results[0].url == "https://law.nfa.gov.tw/article"
     assert results[0].content == "擷取到的正式頁面內容"
     assert results[0].retrieved_at
+
+
+def test_default_allowlist_keeps_ministry_announcement_from_forced_search(monkeypatch):
+    monkeypatch.delenv("WEB_SEARCH_ALLOWED_DOMAINS", raising=False)
+    settings = Settings(_env_file=None, ollama_api_key="test-key")
+    assert "moi.gov.tw" in settings.web_search_allowed_domains.split(",")
+    monkeypatch.setattr("app.web_search.get_settings", lambda: settings)
+
+    def fake_post(url, *, json, headers, timeout):
+        request = httpx.Request("POST", url)
+        if url.endswith("web_search"):
+            assert json["query"] == "一定規模以上之建築物的中央主管機關公告?"
+            return httpx.Response(
+                200,
+                json={
+                    "results": [
+                        {
+                            "title": "內政部公告",
+                            "url": "https://www.moi.gov.tw/News_Content.aspx?n=145&s=314010",
+                            "content": "消防法第十三條公告",
+                        },
+                        {
+                            "title": "民間轉載",
+                            "url": "https://www.rootlaw.com.tw/LetterContent.aspx",
+                            "content": "轉載",
+                        },
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(
+            200,
+            json={"title": "內政部公告", "content": "一定規模以上之建築物應訂定消防防護計畫。"},
+            request=request,
+        )
+
+    monkeypatch.setattr("app.web_search.httpx.post", fake_post)
+    results = OllamaWebSearchClient().search("一定規模以上之建築物的中央主管機關公告?")
+
+    assert len(results) == 1
+    assert results[0].url.startswith("https://www.moi.gov.tw/")
+    assert "一定規模以上之建築物" in results[0].content
 
 
 def test_ollama_web_search_requires_api_key(monkeypatch):

@@ -203,10 +203,11 @@ no live crawl was run.
 | temporary FTS5 table/query | Passed; one inserted Chinese legal row was found |
 | NumPy | 2.5.3; float32 array and norm calculation passed |
 | Streamlit UI dependency | `1.63.0` installed in repository `.venv` |
-| Ollama hosted web-search key | Configured only in ignored local `.env`; live cloud/web request was not run |
+| Ollama hosted web-search key | Configured only in ignored local `.env`; a bounded 2026-10-15 live query returned Ministry of the Interior sources after adding `moi.gov.tw` to the allowlist |
 | repository tests | `95 passed, 30 warnings` after exhaustive-section retrieval, evidence coverage, prompt-source compaction, latest-question viewport positioning, and prior parser/versioning coverage |
 | current repository tests | `101 passed, 29 warnings` on 2026-10-13 with `--basetemp data/pytest_ui_pref_20261013`; includes UI preference persistence and validation |
 | 2026-10-15 repository tests | `119 passed, 29 warnings` with `--basetemp data/pytest-final`; includes explicit `/web` parsing, forced search over high-scoring structural evidence, failure states, API/MCP/Streamlit dispatch, and mode-specific UI status. Default sandbox temp was not writable, so the rerun used ignored `data/`. |
+| 2026-10-15 allowlist regression tests | `120 passed, 29 warnings` with `--basetemp data/pytest-web-allowlist-full`; focused test verifies the exact central-authority query retains a Ministry of the Interior result and rejects a private repost. |
 | Ruff (changed Python files) | Passed |
 | Ruff (whole repository) | Three pre-existing findings remain: one `B008` in `app/cli.py` and import ordering in two crawler modules |
 
@@ -227,6 +228,13 @@ guide, project status, system-manual PDF, and frontend Word/PDF were aligned.
 `AGENTS.md`, `.env.example`, `pyproject.toml`, and the migration plan were unaffected
 because platform rules, configuration keys, dependencies, and roadmap milestones did
 not change. No live web search or crawl was run.
+
+A later 2026-10-15 check of `/web 一定規模以上之建築物的中央主管機關公告?`
+found a saved `web_search_mode=force`, `web_search_status=no_results` response. A bounded
+live probe returned a `www.moi.gov.tw` announcement and `ws.moi.gov.tw` download, both
+excluded by the previous default domain allowlist. The default allowlist and
+`.env.example` now include `moi.gov.tw`; a second bounded probe retained both
+official sources. The focused regression test uses mocked HTTP and stays offline.
 
 - `AGENTS.md` — new repository working contract with 16 policy categories.
 - `README.md` — corrected the documented 2-second throttle, made Windows-safe,

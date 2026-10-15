@@ -244,6 +244,8 @@ Streamlit 側邊欄也可在每次查詢時選擇 `gemma4:e2b`（速度優先）
 問題明確查詢對象的結果；回答 API 會在
 `web_results` 回傳標題、來源連結、擷取時間與內容摘要。啟用此功能前，請在本機
 `.env` 設定 `OLLAMA_API_KEY`；此 key 同時用於 `gemma4:31b-cloud` 與 web fallback。
+預設允許清單包含內政部 `moi.gov.tw`（含 `www.moi.gov.tw`、`ws.moi.gov.tw`），
+可取得中央主管機關的正式公告；若本機 `.env` 自訂了清單，也須將 `moi.gov.tw` 加入。
 未設定時仍可正常使用本機 RAG/LLM，但 cloud/web 功能
 會回報 `web_search_status=unavailable`。`/v1/ask` 的 `web_search_status` 也會明確標示
 本次是否使用、停用或無法使用 web fallback。

@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     web_search_max_fetch_results: int = Field(default=3, ge=1, le=5)
     web_search_min_hybrid_score: float = Field(default=0.35, ge=0.0, le=1.0)
     web_search_allowed_domains: str = (
-        "law.nfa.gov.tw,nfa.gov.tw,law.moj.gov.tw,gazette.nat.gov.tw,"
+        "law.nfa.gov.tw,nfa.gov.tw,moi.gov.tw,law.moj.gov.tw,gazette.nat.gov.tw,"
         "web.law.ntpc.gov.tw,laws.gov.taipei"
     )
 
