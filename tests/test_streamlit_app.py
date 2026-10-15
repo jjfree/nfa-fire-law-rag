@@ -195,15 +195,24 @@ def test_latest_question_scroll_retries_with_a_conversation_specific_anchor():
     streamlit_app._render_latest_question_scroll(
         fake_st,
         "conversation-7-message-4-question",
+        render_token="completed-conversation-7-message-4-question",
     )
 
     html_body = fake_st.components.v1.html_body
     assert 'const targetId = "conversation-7-message-4-question";' in html_body
+    assert (
+        'const renderToken = "completed-conversation-7-message-4-question";'
+        in html_body
+    )
     assert "window.parent.document" in html_body
     assert "MutationObserver" in html_body
     assert "setInterval" in html_body
     assert "30000" in html_body
     assert '"wheel"' in html_body
+    assert '"ArrowDown"' in html_body
+    assert 'const userEvents = ["wheel", "touchstart", "pointerdown"];' in html_body
+    assert '"Enter"' not in html_body
+    assert 'removeEventListener("keydown", stopForScrollKey, true)' in html_body
     assert fake_st.components.v1.height == 1
     assert fake_st.components.v1.scrolling is False
 

@@ -124,7 +124,12 @@ def latest_user_message_index(messages: Iterable[Any]) -> int | None:
     return latest_index
 
 
-def _render_latest_question_scroll(st: Any, anchor_id: str | None) -> None:
+def _render_latest_question_scroll(
+    st: Any,
+    anchor_id: str | None,
+    *,
+    render_token: str | None = None,
+) -> None:
     """Keep the viewport at the latest question after Streamlit finishes rendering."""
     if anchor_id is None:
         return
@@ -134,10 +139,20 @@ def _render_latest_question_scroll(st: Any, anchor_id: str | None) -> None:
 (() => {
   const parentDocument = window.parent.document;
   const targetId = __TARGET_ID__;
+  const renderToken = __RENDER_TOKEN__;
   const startedAt = Date.now();
   let alignmentTimer;
   let observer;
-  const userEvents = ["wheel", "touchstart", "pointerdown", "keydown"];
+  const userEvents = ["wheel", "touchstart", "pointerdown"];
+  const scrollKeys = new Set([
+    "ArrowUp",
+    "ArrowDown",
+    "PageUp",
+    "PageDown",
+    "Home",
+    "End",
+    " ",
+  ]);
 
   const alignQuestion = () => {
     const target = parentDocument.getElementById(targetId);
@@ -148,12 +163,16 @@ def _render_latest_question_scroll(st: Any, anchor_id: str | None) -> None:
   };
 
   const stopForUser = () => cleanup();
+  const stopForScrollKey = (event) => {
+    if (scrollKeys.has(event.key)) cleanup();
+  };
   const cleanup = () => {
     if (alignmentTimer) window.clearInterval(alignmentTimer);
     if (observer) observer.disconnect();
     userEvents.forEach((eventName) => {
       parentDocument.removeEventListener(eventName, stopForUser, true);
     });
+    parentDocument.removeEventListener("keydown", stopForScrollKey, true);
   };
 
   const scrollContainer = parentDocument.querySelector(
@@ -169,6 +188,7 @@ def _render_latest_question_scroll(st: Any, anchor_id: str | None) -> None:
   userEvents.forEach((eventName) => {
     parentDocument.addEventListener(eventName, stopForUser, true);
   });
+  parentDocument.addEventListener("keydown", stopForScrollKey, true);
   alignQuestion();
   alignmentTimer = window.setInterval(() => {
     alignQuestion();
@@ -179,7 +199,9 @@ def _render_latest_question_scroll(st: Any, anchor_id: str | None) -> None:
   window.addEventListener("beforeunload", cleanup, {once: true});
 })();
 </script>
-""".replace("__TARGET_ID__", json.dumps(anchor_id))
+""".replace("__TARGET_ID__", json.dumps(anchor_id)).replace(
+        "__RENDER_TOKEN__", json.dumps(render_token)
+    )
 
     # Streamlit does not reliably execute scripts injected by st.html during the
     # first page mount. A one-pixel component iframe executes the trusted,
@@ -637,17 +659,37 @@ def main() -> None:
 
     query = st.chat_input("例如：消防法第13條對管理權人有什麼要求？")
     if not query:
-        _render_latest_question_scroll(st, latest_question_anchor_id)
+        pending_question_anchor = st.session_state.pop(
+            "pending_question_scroll_anchor", None
+        )
+        scroll_anchor_id = pending_question_anchor or latest_question_anchor_id
+        _render_latest_question_scroll(
+            st,
+            scroll_anchor_id,
+            render_token=(
+                f"completed-{pending_question_anchor}"
+                if pending_question_anchor
+                else None
+            ),
+        )
         return
 
     # Render the submitted question before starting retrieval/LLM work so the
     # user gets immediate feedback even when the local model takes a while.
+    submitted_question_anchor_id = (
+        f"conversation-{active_id}-message-{len(messages)}-question"
+    )
     with st.chat_message("user"):
         st.markdown(
             question_anchor(active_id, len(messages), latest=True),
             unsafe_allow_html=True,
         )
         st.write(query)
+    _render_latest_question_scroll(
+        st,
+        submitted_question_anchor_id,
+        render_token=f"submitting-{submitted_question_anchor_id}",
+    )
     with st.chat_message("assistant"), st.spinner("正在檢索法規並整理回答…"):
         try:
             response = search_question(
@@ -664,10 +706,9 @@ def main() -> None:
             message_anchor_prefix = f"conversation-{active_id}-message-{len(messages) + 1}"
             _render_response(st, response, message_anchor_prefix)
             save_exchange(active_id, query, response=response)
-    _render_latest_question_scroll(
-        st,
-        f"conversation-{active_id}-message-{len(messages)}-question",
-    )
+    # Force a fresh scroll component after rerun. Reusing the same component
+    # body can preserve the iframe instead of executing its script again.
+    st.session_state.pending_question_scroll_anchor = submitted_question_anchor_id
     st.rerun()
 
 
