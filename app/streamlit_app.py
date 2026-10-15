@@ -397,10 +397,16 @@ def search_question(
     """Run retrieval and local evidence-grounded answer generation."""
     from app.answer import answer_question
     from app.rerank import retrieve_answer_evidence
+    from app.web_search_mode import parse_answer_request
 
-    evidence = retrieve_answer_evidence(query, top_k=top_k, law_title=law_title)
-    response = build_response(query, evidence.hits, evidence.metadata())
-    response.update(answer_question(query, evidence.hits, model=llm_model))
+    request = parse_answer_request(query)
+    evidence = retrieve_answer_evidence(request.query, top_k=top_k, law_title=law_title)
+    response = build_response(request.query, evidence.hits, evidence.metadata())
+    response.update(
+        answer_question(
+            request.query, evidence.hits, model=llm_model, web_mode=request.web_mode
+        )
+    )
     return response
 
 
@@ -412,6 +418,28 @@ def _law_titles() -> list[str]:
 
     with session_scope() as db:
         return list(db.scalars(select(Law.title).order_by(Law.title)).all())
+
+
+def web_search_caption(response: dict[str, Any]) -> str | None:
+    """Describe the actual web outcome using the user's chosen search mode."""
+    captions = {
+        "auto": {
+            "used": "本次 RAG 證據不足，已補充允許清單內的官方網頁資料。",
+            "unavailable": "RAG 證據不足；web fallback 尚未設定 OLLAMA_API_KEY。",
+            "error": "RAG 證據不足；web fallback 暫時無法連線，以下仍顯示本機結果。",
+            "no_results": "RAG 證據不足；web search 沒有找到允許清單內的官方來源。",
+        },
+        "force": {
+            "used": "已依 /web 指令搜尋並補充允許清單內的官方網頁資料。",
+            "unavailable": "強制 web search 無法執行：尚未設定 OLLAMA_API_KEY。",
+            "error": "強制 web search 暫時無法連線，以下仍顯示本機結果。",
+            "no_results": "強制 web search 沒有找到允許清單內的官方來源。",
+            "disabled": "強制 web search 無法執行：系統已停用 web search。",
+        },
+    }
+    return captions.get(response.get("web_search_mode", "auto"), {}).get(
+        response.get("web_search_status")
+    )
 
 
 def _render_response(
@@ -467,15 +495,9 @@ def _render_response(
             st.success(message)
         else:
             st.warning(f"{message}目前結果未完整，請勿視為全部條文。")
-    web_status = response.get("web_search_status")
-    if web_status == "used":
-        st.caption("本次 RAG 證據不足，已補充允許清單內的官方網頁資料。")
-    elif web_status == "unavailable":
-        st.caption("RAG 證據不足；web fallback 尚未設定 OLLAMA_API_KEY。")
-    elif web_status == "error":
-        st.caption("RAG 證據不足；web fallback 暫時無法連線，以下仍顯示本機結果。")
-    elif web_status == "no_results":
-        st.caption("RAG 證據不足；web search 沒有找到允許清單內的官方來源。")
+    caption = web_search_caption(response)
+    if caption:
+        st.caption(caption)
     if web_results:
         st.subheader(f"Web 補充來源（{len(web_results)} 筆）")
     st.markdown(response["summary"])

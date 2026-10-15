@@ -129,7 +129,9 @@ def render_table(lines: list[str], styles: dict[str, ParagraphStyle], available_
     rows = table_rows(lines)
     header, body = rows[0], rows[2:]
     column_count = len(header)
-    if column_count == 2:
+    if header == ["日期", "內容"]:
+        proportions = [0.16, 0.84]
+    elif column_count == 2:
         proportions = [0.30, 0.70]
     elif column_count == 3:
         proportions = [0.23, 0.39, 0.38]

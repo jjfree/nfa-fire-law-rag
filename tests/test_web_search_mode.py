@@ -1,0 +1,177 @@
+from types import SimpleNamespace
+
+import pytest
+from fastapi import HTTPException
+
+from app.answer import AnswerResult, answer_question
+from app.web_search import WebSearchResult, WebSearchUnavailable
+from app.web_search_mode import parse_answer_request
+
+
+@pytest.mark.parametrize(
+    ("raw", "mode", "expected_query", "expected_mode"),
+    [
+        ("消防法第13條", "auto", "消防法第13條", "auto"),
+        (" /web  消防法第13條 ", "auto", "消防法第13條", "force"),
+        ("/WEB\n消防法第13條", "auto", "消防法第13條", "force"),
+        ("消防法 /web 第13條", "auto", "消防法 /web 第13條", "auto"),
+        ("/website 消防法", "auto", "/website 消防法", "auto"),
+        ("消防法", "force", "消防法", "force"),
+    ],
+)
+def test_parse_answer_request(raw, mode, expected_query, expected_mode):
+    request = parse_answer_request(raw, mode)
+    assert (request.query, request.web_mode) == (expected_query, expected_mode)
+
+
+def test_parse_answer_request_rejects_empty_directive_and_invalid_mode():
+    with pytest.raises(ValueError, match="/web 後輸入問題"):
+        parse_answer_request(" /web ")
+    with pytest.raises(ValueError, match="auto 或 force"):
+        parse_answer_request("問題", "invalid")
+
+
+def test_force_searches_high_scoring_structural_evidence_and_keeps_citations(monkeypatch):
+    hit = SimpleNamespace(retrieval_mode="structural_section", hybrid_score=1.0)
+    result = WebSearchResult("官方法規", "https://law.nfa.gov.tw/test", "內容", "2026-10-15")
+    searched = []
+    monkeypatch.setattr(
+        "app.answer.get_settings",
+        lambda: SimpleNamespace(web_search_enabled=True, web_search_provider="ollama"),
+    )
+    monkeypatch.setattr(
+        "app.answer.OllamaWebSearchClient.search",
+        lambda self, query: searched.append(query) or [result],
+    )
+    monkeypatch.setattr(
+        "app.answer._with_web_evidence",
+        lambda query, hits, web_results, model: AnswerResult("官方說明。[2]", "ok", (2,)),
+    )
+
+    response = answer_question("消防法第13條", [hit], web_mode="force")
+
+    assert searched == ["消防法第13條"]
+    assert response["web_search_mode"] == "force"
+    assert response["web_search_status"] == "used"
+    assert response["answer_citations"] == [2]
+    assert response["web_results"][0]["url"] == result.url
+
+
+@pytest.mark.parametrize(
+    ("search_result", "expected_status"),
+    [([], "no_results"), (WebSearchUnavailable("missing key"), "unavailable")],
+)
+def test_force_reports_no_web_evidence_without_losing_local_answer(
+    monkeypatch, search_result, expected_status
+):
+    monkeypatch.setattr(
+        "app.answer.get_settings",
+        lambda: SimpleNamespace(web_search_enabled=True, web_search_provider="ollama"),
+    )
+
+    def fake_search(self, query):
+        if isinstance(search_result, Exception):
+            raise search_result
+        return search_result
+
+    monkeypatch.setattr("app.answer.OllamaWebSearchClient.search", fake_search)
+    monkeypatch.setattr(
+        "app.answer.generate_answer",
+        lambda query, hits, model=None: AnswerResult("本機證據。[1]", "ok", (1,)),
+    )
+    hit = SimpleNamespace(retrieval_mode="structural_section", hybrid_score=1.0)
+
+    response = answer_question("問題", [hit], web_mode="force")
+
+    assert response["web_search_status"] == expected_status
+    assert response["answer"] == "本機證據。[1]"
+
+
+def test_force_does_not_override_disabled_server_setting(monkeypatch):
+    monkeypatch.setattr(
+        "app.answer.get_settings",
+        lambda: SimpleNamespace(web_search_enabled=False, web_search_provider="ollama"),
+    )
+    monkeypatch.setattr(
+        "app.answer.generate_answer",
+        lambda query, hits, model=None: AnswerResult("本機證據。[1]", "ok", (1,)),
+    )
+    response = answer_question("問題", [object()], web_mode="force")
+    assert response["web_search_status"] == "disabled"
+    assert response["web_search_mode"] == "force"
+
+
+def test_api_and_mcp_parse_directive_before_retrieval(monkeypatch):
+    from app import api, mcp_server
+
+    seen = []
+    evidence = SimpleNamespace(hits=[], metadata=lambda: {"mode": "hybrid"})
+
+    def fake_retrieve(query, top_k, law_title):
+        seen.append((query, top_k, law_title))
+        return evidence
+
+    def fake_answer(query, hits, web_mode):
+        seen.append((query, web_mode))
+        return {"web_search_mode": web_mode, "web_search_status": "no_results"}
+
+    monkeypatch.setattr(api, "retrieve_answer_evidence", fake_retrieve)
+    monkeypatch.setattr(api, "answer_question", fake_answer)
+    monkeypatch.setattr(mcp_server, "retrieve_answer_evidence", fake_retrieve)
+    monkeypatch.setattr(mcp_server, "answer_question", fake_answer)
+
+    api_response = api.api_ask("/web 消防法", 8, None, "auto")
+    mcp_response = mcp_server.ask_fire_law("消防法", 8, None, "force")
+
+    assert api_response["query"] == mcp_response["query"] == "消防法"
+    assert seen == [
+        ("消防法", 8, None),
+        ("消防法", "force"),
+        ("消防法", 8, None),
+        ("消防法", "force"),
+    ]
+    with pytest.raises(HTTPException) as exc:
+        api.api_ask("/web", 8, None, "auto")
+    assert exc.value.status_code == 422
+
+
+def test_streamlit_search_parses_directive_before_retrieval(monkeypatch):
+    from app import answer, rerank, streamlit_app
+
+    seen = []
+    evidence = SimpleNamespace(hits=[], metadata=lambda: {"mode": "hybrid"})
+    monkeypatch.setattr(
+        rerank,
+        "retrieve_answer_evidence",
+        lambda query, top_k, law_title: seen.append(query) or evidence,
+    )
+    monkeypatch.setattr(
+        answer,
+        "answer_question",
+        lambda query, hits, model, web_mode: seen.append((query, web_mode)) or {},
+    )
+
+    response = streamlit_app.search_question("/web 消防法", 8)
+
+    assert response["query"] == "消防法"
+    assert seen == ["消防法", ("消防法", "force")]
+
+
+@pytest.mark.parametrize(
+    ("status", "fragment"),
+    [
+        ("used", "已依 /web 指令搜尋"),
+        ("no_results", "沒有找到"),
+        ("unavailable", "尚未設定 OLLAMA_API_KEY"),
+        ("error", "無法連線"),
+        ("disabled", "系統已停用"),
+    ],
+)
+def test_streamlit_force_caption_reports_actual_outcome(status, fragment):
+    from app.streamlit_app import web_search_caption
+
+    caption = web_search_caption(
+        {"web_search_mode": "force", "web_search_status": status}
+    )
+    assert fragment in caption
+    assert "RAG 證據不足" not in caption

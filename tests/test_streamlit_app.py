@@ -340,7 +340,7 @@ def test_search_question_adds_answer_layer(monkeypatch):
     )
     monkeypatch.setattr(
         "app.answer.answer_question",
-        lambda query, hits, model: {
+        lambda query, hits, model, web_mode: {
             "answer": f"整理後答案。[1]（{model}）",
             "answer_status": "ok",
             "answer_citations": [1],

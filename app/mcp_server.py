@@ -8,6 +8,7 @@ from app.db import session_scope
 from app.models import Law, LawVersion
 from app.rerank import retrieve_answer_evidence
 from app.search import exact_article, hybrid_search
+from app.web_search_mode import WebSearchMode, parse_answer_request
 
 mcp = FastMCP("台灣消防法規 RAG")
 
@@ -19,12 +20,18 @@ def search_fire_law(query: str, top_k: int = 8, law_title: str | None = None) ->
 
 
 @mcp.tool()
-def ask_fire_law(query: str, top_k: int = 8, law_title: str | None = None) -> dict:
-    """Answer a fire-law question from current retrieved chunks with citations."""
-    evidence = retrieve_answer_evidence(query, top_k, law_title)
+def ask_fire_law(
+    query: str,
+    top_k: int = 8,
+    law_title: str | None = None,
+    web_mode: WebSearchMode = "auto",
+) -> dict:
+    """Answer with citations, optionally forcing official web search."""
+    request = parse_answer_request(query, web_mode)
+    evidence = retrieve_answer_evidence(request.query, top_k, law_title)
     return {
-        "query": query,
-        **answer_question(query, evidence.hits),
+        "query": request.query,
+        **answer_question(request.query, evidence.hits, web_mode=request.web_mode),
         "retrieval": evidence.metadata(),
         "results": [asdict(hit) for hit in evidence.hits],
     }

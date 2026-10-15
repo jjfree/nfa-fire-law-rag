@@ -248,6 +248,13 @@ Streamlit 側邊欄也可在每次查詢時選擇 `gemma4:e2b`（速度優先）
 會回報 `web_search_status=unavailable`。`/v1/ask` 的 `web_search_status` 也會明確標示
 本次是否使用、停用或無法使用 web fallback。
 
+若要不受本機分數或完整章節模式影響而嘗試搜尋，可在問答問題開頭加入 `/web `，
+例如 `/web 消防法第13條最新修正內容`；前端會保留原始提問紀錄，但檢索、Web 搜尋及
+回答只使用去除指令後的問題。`/v1/ask` 與 MCP `ask_fire_law` 也接受
+`web_mode=force`（預設 `auto`），並在回應中回傳 `web_search_mode` 與
+`web_search_status`。強制模式仍遵守系統停用開關、金鑰與官方網域白名單；
+`no_results`、`unavailable`、`error` 或 `disabled` 都不表示取得了網頁證據。
+
 ## 5. 本機瀏覽器問答介面（Streamlit）
 
 安裝 UI 選配依賴：
@@ -269,6 +276,7 @@ Streamlit 占用，啟動器會辨識 Windows venv 的父子程序鏈後安全�
 應用程式占用則拒絕終止。啟動器不會執行爬取或自動安裝套件。
 
 開啟 `http://127.0.0.1:8501` 後，可輸入自然語言問題、選擇法規篩選與結果數。
+需要每次嘗試官方網頁搜尋時，在問題開頭輸入 `/web `。
 「顯示結果數」首次使用為 8，調整後會存入本機 SQLite，重新啟動會恢復最後設定。
 介面顯示現行版本的條文內容、條號、版本、檢索分數與原始來源 URL；預設不需要
 OpenAI API key，也不會把檢索不到的內容編造成法律結論。若已設定 `OLLAMA_API_KEY`，
@@ -289,7 +297,7 @@ python -m app.mcp_server
 提供工具：
 
 - `search_fire_law(query, top_k=8, law_title=None)`
-- `ask_fire_law(query, top_k=8, law_title=None)`
+- `ask_fire_law(query, top_k=8, law_title=None, web_mode="auto")`
 - `get_fire_law_article(law_title, article)`
 
 `ask_fire_law` 與 `/v1/ask` 會額外回傳 `retrieval` 覆蓋資訊；完整章節模式下，

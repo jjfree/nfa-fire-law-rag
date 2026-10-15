@@ -10,6 +10,7 @@ from app.ingest import crawl_category, probe_category
 from app.models import Law, LawVersion
 from app.rerank import retrieve_answer_evidence
 from app.search import exact_article, hybrid_search
+from app.web_search_mode import WebSearchMode, parse_answer_request
 
 app = FastAPI(title="台灣消防法規 RAG API", version=__version__)
 
@@ -47,12 +48,21 @@ def api_search(q: str = Query(min_length=1), top_k: int = Query(default=8, ge=1,
 
 
 @app.get("/v1/ask")
-def api_ask(q: str = Query(min_length=1), top_k: int = Query(default=8, ge=1, le=50), law_title: str | None = None):
+def api_ask(
+    q: str = Query(min_length=1),
+    top_k: int = Query(default=8, ge=1, le=50),
+    law_title: str | None = None,
+    web_mode: WebSearchMode = "auto",
+):
     """Answer from current retrieved law chunks with local-model citations."""
-    evidence = retrieve_answer_evidence(q, top_k, law_title)
+    try:
+        request = parse_answer_request(q, web_mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    evidence = retrieve_answer_evidence(request.query, top_k, law_title)
     return {
-        "query": q,
-        **answer_question(q, evidence.hits),
+        "query": request.query,
+        **answer_question(request.query, evidence.hits, web_mode=request.web_mode),
         "retrieval": evidence.metadata(),
         "results": [asdict(x) for x in evidence.hits],
     }

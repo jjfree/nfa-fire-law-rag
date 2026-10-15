@@ -21,6 +21,7 @@ from app.web_search import (
     WebSearchResult,
     WebSearchUnavailable,
 )
+from app.web_search_mode import WebSearchMode
 
 
 class AnswerGenerationError(RuntimeError):
@@ -401,15 +402,22 @@ def _with_web_evidence(
     )
 
 
-def answer_question(query: str, hits: list[Any], model: str | None = None) -> dict[str, Any]:
-    """Answer from RAG and use official web evidence only when RAG is insufficient."""
+def answer_question(
+    query: str,
+    hits: list[Any],
+    model: str | None = None,
+    web_mode: WebSearchMode = "auto",
+) -> dict[str, Any]:
+    """Answer from RAG with automatic fallback or an explicit web-search attempt."""
+    if web_mode not in ("auto", "force"):
+        raise ValueError("web_mode 必須是 auto 或 force")
     settings = get_settings()
     web_results: list[WebSearchResult] = []
     web_status = "not_needed"
     result: AnswerResult
 
     should_search = settings.web_search_enabled and settings.web_search_provider.lower() == "ollama"
-    if should_search and rag_needs_web_search(hits):
+    if should_search and (web_mode == "force" or rag_needs_web_search(hits)):
         try:
             web_results = OllamaWebSearchClient().search(query)
         except WebSearchUnavailable:
@@ -459,6 +467,7 @@ def answer_question(query: str, hits: list[Any], model: str | None = None) -> di
         "answer_eval_count": result.eval_count,
         "answer_retry_count": result.retry_count,
         "web_search_status": web_status,
+        "web_search_mode": web_mode,
         "web_results": _serialize_web_results(web_results),
     }
     if result.error:

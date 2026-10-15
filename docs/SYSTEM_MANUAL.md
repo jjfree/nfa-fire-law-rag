@@ -2,7 +2,7 @@
 
 本說明書說明台灣消防法規 RAG 的系統架構、法規爬取與版本化設計、檢索與回答流程、安裝啟動方式，以及 Streamlit 前端操作。預設目標是 Windows 10/11 的本機 SQLite 執行環境；Docker、WSL、PostgreSQL 與 pgvector 仍保留為選配相容路徑，不是一般使用的必要條件。
 
-文件版本：2026-10-13
+文件版本：2026-10-15
 
 適用版本：Phase 2 / v0.2.x
 
@@ -135,6 +135,8 @@ SQLite 檢索先以 FTS5 取得候選，再以 NumPy 計算 embedding cosine sim
 
 當本機無命中、最高 hybrid 分數低於 `WEB_SEARCH_MIN_HYBRID_SCORE`，或模型明確表示證據不足時，可選擇啟用 Ollama hosted web search。Web 結果只接受 `.env` 的 HTTPS 官方網域清單；若問題明確詢問是否包含某對象，還必須在標題或擷取內容中涵蓋該對象，避免泛稱「相關法條」但未支持問題的頁面進入回答證據。保留結果會標示為「官方網頁補充資料」與擷取時間，不能默默覆蓋或合併本機現行法規。
 
+問答入口支援在問題開頭輸入 `/web `，或由 API/MCP 指定 `web_mode=force`，不受本機分數或完整章節模式影響而嘗試一次官方網頁搜尋。程式在檢索前移除指令，避免 `/web` 混入檢索、Web 查詢及模型問題；一般問題使用 `web_mode=auto`。強制搜尋仍須符合 `WEB_SEARCH_ENABLED`、Ollama API key、HTTPS 官方網域白名單與相關性過濾，並不保證有可引用的結果。回應以 `web_search_mode` 與 `web_search_status` 區分使用者意圖與實際結果；無結果或服務不可用時仍保留本機證據與回答。
+
 ## 6. 安裝與啟動
 
 以下以 Windows PowerShell 為主。指令應在 repository 根目錄執行。
@@ -253,6 +255,8 @@ MCP 使用 stdio；在 MCP client 設定中以 repository 內的 Python 啟動�
 
 提供的 MCP 工具為 `search_fire_law`、`ask_fire_law`、`get_fire_law_article`、`list_fire_laws`、`list_law_versions`。檢索 smoke test：
 
+`/v1/ask` 與 MCP `ask_fire_law` 的 `web_mode` 可為 `auto`（預設）或 `force`；兩者也接受問題開頭的 `/web ` 指令。回應的 `query` 為移除指令後的問題，並回傳 `web_search_mode`、`web_search_status`。單獨輸入 `/web` 會拒絕為空問題；一般 `/v1/search` 與 MCP `search_fire_law` 不解析此問答指令。
+
 ```powershell
 .venv\Scripts\python.exe -m app.cli eval --path eval/phase2_queries.json --top-k 8
 ```
@@ -271,6 +275,8 @@ MCP 使用 stdio；在 MCP client 設定中以 repository 內的 Python 啟動�
 ### 7.2 問答與證據
 
 在底部輸入自然語言問題，例如「消防法第13條對管理權人有什麼要求？」。回答區會依序顯示：模型回答或資料不足提示、本機檢索摘要、現行法規證據卡片，以及必要時的 web 補充來源。啟動、重新整理、完成回答或切換左側對話時，前端會將視窗定位在該對話最新一輪的問題起點，而不是自動捲到最下方；空白對話沒有定位目標時則不強制捲動。
+
+若要指定當次查詢嘗試官方網頁搜尋，在問題最前方輸入 `/web `，例如 `/web 消防法第13條最新修正內容`。畫面保存並顯示原始提問，檢索及回答使用去除指令後的問題；搜尋成功、無結果、缺少金鑰、連線失敗或系統停用時，提示會依強制模式說明實際狀態，不會把強制查詢誤稱為「RAG 證據不足」。
 
 本機證據卡片嚴格依 `[1]` 至 `[N]` 的引用編號順序顯示，`top_k` 計算一般查詢的個別條文；每張 hybrid 卡片保留獨立 `[N]`、法規名稱、條號、標題、版本與 hybrid/vector/lexical 分數，再接續 Web 證據。完整列舉時，畫面改顯示結構式章節檢索、章節範圍與例如 `21／21` 的覆蓋數，並按法規原始條文順序顯示。畫面另列本機與 Web 的編號範圍。所有證據卡在回答顯示時預設收合；點擊卡片標題可展開原文，點擊回答中的 `[N]` 引用會跳到並展開對應證據。回答下方顯示模型、實際輸出 token 數、當次有效輸出上限、中文生成狀態及重試次數；原始 `done_reason` 仍保留在回應資料中。**分數是排序訊號，不是法律效力。**
 
@@ -304,6 +310,7 @@ MCP 使用 stdio；在 MCP client 設定中以 repository 內的 Python 啟動�
 
 | 日期 | 內容 |
 |---|---|
+| 2026-10-15 | 問答支援 `/web` 與 `web_mode=force`，顯示強制搜尋結果及不可用原因 |
 | 2026-10-13 | 前端顯示結果數存入 SQLite，重新啟動後恢復最後設定 |
 | 2026-09-29 | 證據卡顯示時預設收合，點擊回答引用後展開目標卡片 |
 | 2026-09-24 | 修正 Windows venv 啟動器辨識；加入完整列舉罰則檢索與覆蓋 metadata |

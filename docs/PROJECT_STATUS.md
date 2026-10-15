@@ -1,6 +1,6 @@
 # Project Status — nfa-fire-law-rag
 
-Date: 2026-10-13
+Date: 2026-10-15
 Repository: `C:\Users\james.chang\source\nfa-fire-law-rag`
 Branch: `main` at `origin/main`; the tracked baseline was clean before this documentation change.
 
@@ -26,7 +26,7 @@ not required for the Windows SQLite target.
 
 | Area | Current evidence | Assessment |
 |---|---|---|
-| Repository | 74 tracked files; `main` tracks `origin/main` | Present and maintainable |
+| Repository | 76 tracked files before this change; `main` tracks `origin/main` | Present and maintainable |
 | Python package | `app/` with config, models, DB, parser, ingest, search, API, MCP | Substantially implemented |
 | Crawler | `app/crawler/{discovery,fetch,nfa_urls}.py` | Implemented, bounded and host-validated |
 | Ingestion | `app/ingest.py`, attachment handling, version/hash logic | Implemented with focused follow-up needs |
@@ -35,7 +35,7 @@ not required for the Windows SQLite target.
 | Database | `app/db.py`, `app/models.py`, `scripts/init.sql` | SQLite default implemented; PostgreSQL optional |
 | API/MCP | `app/api.py`, `app/mcp_server.py` | Implemented PoC search and cited-answer interfaces with retrieval-mode and coverage metadata |
 | Browser UI | `app/streamlit_app.py`, `app/conversations.py`, `app/ui_preferences.py`, `.streamlit/config.toml`, `pyproject.toml` `ui` extra | Local Streamlit Q&A/evidence interface with SQLite-persisted multi-conversation history and display-result count, title editing, deletion, latest-question viewport positioning, and exhaustive-query coverage display |
-| Tests | 17 test modules plus fixtures | 101 tests passing |
+| Tests | Offline test modules plus fixtures | 119 tests passing |
 | Evaluation | `eval/phase2_queries.json`, `app/evaluation.py`, CLI `eval` | Seed evaluation implemented; corpus-dependent |
 | Config | `app/config.py`, `.env.example`; local `.env` ignored | Implemented; secrets kept local |
 | Docs | `README.md`, `AGENTS.md`, five `docs/` files, versioned screenshots, system-manual PDF, and frontend Word/PDF guides | README, full system manual, frontend user guide, developer notes, editable/print deliverables, and operational documentation are present |
@@ -206,6 +206,7 @@ no live crawl was run.
 | Ollama hosted web-search key | Configured only in ignored local `.env`; live cloud/web request was not run |
 | repository tests | `95 passed, 30 warnings` after exhaustive-section retrieval, evidence coverage, prompt-source compaction, latest-question viewport positioning, and prior parser/versioning coverage |
 | current repository tests | `101 passed, 29 warnings` on 2026-10-13 with `--basetemp data/pytest_ui_pref_20261013`; includes UI preference persistence and validation |
+| 2026-10-15 repository tests | `119 passed, 29 warnings` with `--basetemp data/pytest-final`; includes explicit `/web` parsing, forced search over high-scoring structural evidence, failure states, API/MCP/Streamlit dispatch, and mode-specific UI status. Default sandbox temp was not writable, so the rerun used ignored `data/`. |
 | Ruff (changed Python files) | Passed |
 | Ruff (whole repository) | Three pre-existing findings remain: one `B008` in `app/cli.py` and import ordering in two crawler modules |
 
@@ -214,6 +215,18 @@ from SQLAlchemy-related defaults, the deprecated `sqlite3.version` read used for
 check, and a pytest cache permission warning. They did not fail tests.
 
 ## Files changed in this phase
+
+The 2026-10-15 change adds a leading `/web` directive and `web_mode=force` to answer
+entrypoints. The answer layer attempts official web search even when local evidence
+scores highly or structural retrieval is complete; server enablement, key, HTTPS
+allowlist, relevance filtering, and citation validation remain in force. Streamlit
+reports forced-search outcomes without describing them as local RAG insufficiency.
+The existing guide screenshots show ordinary automatic queries and remain accurate;
+no screenshot depicts the new forced-search state. README, system manual, frontend
+guide, project status, system-manual PDF, and frontend Word/PDF were aligned.
+`AGENTS.md`, `.env.example`, `pyproject.toml`, and the migration plan were unaffected
+because platform rules, configuration keys, dependencies, and roadmap milestones did
+not change. No live web search or crawl was run.
 
 - `AGENTS.md` — new repository working contract with 16 policy categories.
 - `README.md` — corrected the documented 2-second throttle, made Windows-safe,

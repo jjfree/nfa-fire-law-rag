@@ -245,6 +245,11 @@ def build_docx(metadata: dict[str, str], blocks: list[Block], output: Path) -> N
     title_style.font.size = Pt(24)
     title_style.font.bold = True
     title_style.font.color.rgb = RGBColor(0, 0, 0)
+    title_borders = OxmlElement("w:pBdr")
+    bottom_border = OxmlElement("w:bottom")
+    bottom_border.set(qn("w:val"), "nil")
+    title_borders.append(bottom_border)
+    title_style._element.get_or_add_pPr().append(title_borders)
 
     for style_name, size in (("Heading 1", 16), ("Heading 2", 12.5)):
         style = document.styles[style_name]
@@ -297,9 +302,14 @@ def build_docx(metadata: dict[str, str], blocks: list[Block], output: Path) -> N
                 for run in paragraph.runs:
                     set_run_font(run, "Microsoft JhengHei", 9)
         elif block.kind in {"bullet", "numbered"}:
-            style_name = "List Bullet" if block.kind == "bullet" else "List Number"
-            for item in block.text.splitlines():
-                paragraph = document.add_paragraph(style=style_name)
+            for index, item in enumerate(block.text.splitlines(), start=1):
+                paragraph = document.add_paragraph(
+                    style="List Bullet" if block.kind == "bullet" else "Normal"
+                )
+                if block.kind == "numbered":
+                    paragraph.paragraph_format.left_indent = Inches(0.36)
+                    paragraph.paragraph_format.first_line_indent = Inches(-0.24)
+                    item = f"{index}. {item}"
                 add_markdown_runs(paragraph, item)
                 paragraph.paragraph_format.space_after = Pt(3)
         elif block.kind == "code":
@@ -327,6 +337,14 @@ def build_docx(metadata: dict[str, str], blocks: list[Block], output: Path) -> N
             table = document.add_table(rows=len(rows), cols=len(rows[0]))
             table.alignment = WD_TABLE_ALIGNMENT.CENTER
             table.autofit = True
+            if rows[0] == ["日期", "版本", "異動說明"]:
+                table.autofit = False
+                widths = (Inches(1.05), Inches(0.65), Inches(4.85))
+                for column, width in zip(table.columns, widths):
+                    column.width = width
+                for table_row in table.rows:
+                    for cell, width in zip(table_row.cells, widths):
+                        cell.width = width
             for row_index, row in enumerate(rows):
                 for col_index, value in enumerate(row):
                     cell = table.cell(row_index, col_index)
