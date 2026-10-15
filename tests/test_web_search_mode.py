@@ -57,6 +57,59 @@ def test_force_searches_high_scoring_structural_evidence_and_keeps_citations(mon
     assert response["web_results"][0]["url"] == result.url
 
 
+def test_auto_searches_central_authority_announcement_despite_high_local_score(monkeypatch):
+    hit = SimpleNamespace(retrieval_mode="hybrid", hybrid_score=0.645)
+    result = WebSearchResult(
+        "內政部公告", "https://www.moi.gov.tw/News_Content.aspx?n=145&s=314010",
+        "一定規模以上之建築物", "2026-10-15",
+    )
+    searched = []
+    monkeypatch.setattr(
+        "app.answer.get_settings",
+        lambda: SimpleNamespace(web_search_enabled=True, web_search_provider="ollama"),
+    )
+    monkeypatch.setattr(
+        "app.answer.OllamaWebSearchClient.search",
+        lambda self, query: searched.append(query) or [result],
+    )
+    monkeypatch.setattr(
+        "app.answer._with_web_evidence",
+        lambda query, hits, web_results, model: AnswerResult("內政部公告。[2]", "ok", (2,)),
+    )
+
+    response = answer_question("一定規模以上之建築物的中央主管機關公告?", [hit])
+
+    assert searched == ["一定規模以上之建築物的中央主管機關公告?"]
+    assert response["web_search_mode"] == "auto"
+    assert response["web_search_status"] == "used"
+    assert response["web_results"][0]["url"] == result.url
+
+
+def test_auto_keeps_high_scoring_ordinary_law_question_local(monkeypatch):
+    monkeypatch.setattr(
+        "app.answer.get_settings",
+        lambda: SimpleNamespace(
+            web_search_enabled=True, web_search_provider="ollama",
+            web_search_min_hybrid_score=0.35,
+        ),
+    )
+    monkeypatch.setattr(
+        "app.answer.OllamaWebSearchClient.search",
+        lambda self, query: pytest.fail("unexpected web search"),
+    )
+    monkeypatch.setattr(
+        "app.answer.generate_answer",
+        lambda query, hits, model=None: AnswerResult("本機條文。[1]", "ok", (1,)),
+    )
+
+    response = answer_question(
+        "消防法第13條的規定為何？",
+        [SimpleNamespace(retrieval_mode="hybrid", hybrid_score=0.645)],
+    )
+
+    assert response["web_search_status"] == "not_needed"
+
+
 @pytest.mark.parametrize(
     ("search_result", "expected_status"),
     [([], "no_results"), (WebSearchUnavailable("missing key"), "unavailable")],
@@ -174,4 +227,14 @@ def test_streamlit_force_caption_reports_actual_outcome(status, fragment):
         {"web_search_mode": "force", "web_search_status": status}
     )
     assert fragment in caption
+    assert "RAG 證據不足" not in caption
+
+
+def test_streamlit_auto_caption_does_not_assume_low_rag_score():
+    from app.streamlit_app import web_search_caption
+
+    caption = web_search_caption(
+        {"web_search_mode": "auto", "web_search_status": "used"}
+    )
+    assert "已自動搜尋" in caption
     assert "RAG 證據不足" not in caption

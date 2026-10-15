@@ -15,6 +15,7 @@ import httpx
 
 from app.config import get_settings
 from app.llm_limits import ModelTokenLimits, resolve_model_token_limits
+from app.query_analysis import requests_official_announcement
 from app.web_search import (
     OllamaWebSearchClient,
     WebSearchError,
@@ -417,7 +418,11 @@ def answer_question(
     result: AnswerResult
 
     should_search = settings.web_search_enabled and settings.web_search_provider.lower() == "ollama"
-    if should_search and (web_mode == "force" or rag_needs_web_search(hits)):
+    if should_search and (
+        web_mode == "force"
+        or requests_official_announcement(query)
+        or rag_needs_web_search(hits)
+    ):
         try:
             web_results = OllamaWebSearchClient().search(query)
         except WebSearchUnavailable:

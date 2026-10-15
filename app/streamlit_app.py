@@ -424,10 +424,10 @@ def web_search_caption(response: dict[str, Any]) -> str | None:
     """Describe the actual web outcome using the user's chosen search mode."""
     captions = {
         "auto": {
-            "used": "本次 RAG 證據不足，已補充允許清單內的官方網頁資料。",
-            "unavailable": "RAG 證據不足；web fallback 尚未設定 OLLAMA_API_KEY。",
-            "error": "RAG 證據不足；web fallback 暫時無法連線，以下仍顯示本機結果。",
-            "no_results": "RAG 證據不足；web search 沒有找到允許清單內的官方來源。",
+            "used": "已自動搜尋並補充允許清單內的官方網頁資料。",
+            "unavailable": "自動 web search 無法執行：尚未設定 OLLAMA_API_KEY。",
+            "error": "自動 web search 暫時無法連線，以下仍顯示本機結果。",
+            "no_results": "已自動嘗試 web search，但沒有找到允許清單內的官方來源。",
         },
         "force": {
             "used": "已依 /web 指令搜尋並補充允許清單內的官方網頁資料。",

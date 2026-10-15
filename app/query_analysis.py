@@ -71,6 +71,14 @@ def is_exhaustive_query(query: str) -> bool:
     )
 
 
+def requests_official_announcement(query: str) -> bool:
+    """Find requests for an authority's announcement beyond the stored law text."""
+    normalized = re.sub(r"\s+", "", query)
+    return "公告" in normalized and any(
+        authority in normalized for authority in ("主管機關", "內政部", "消防署")
+    )
+
+
 def is_penalty_topic_query(query: str) -> bool:
     """Recognize statutory penalty vocabulary, including common user aliases."""
     normalized = re.sub(r"\s+", "", query)
