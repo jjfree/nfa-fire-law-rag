@@ -137,12 +137,21 @@ def _render_latest_question_scroll(
     scroll_script = """
 <script>
 (() => {
-  const parentDocument = window.parent.document;
+  const parentWindow = window.parent;
+  const parentDocument = parentWindow.document;
+  const controllerKey = "__nfaQuestionScrollController";
+  const existingController = parentWindow[controllerKey];
+  if (existingController?.cleanup) existingController.cleanup();
+
   const targetId = __TARGET_ID__;
   const renderToken = __RENDER_TOKEN__;
   const startedAt = Date.now();
-  let alignmentTimer;
-  let observer;
+  const controller = {
+    alignmentTimer: null,
+    observer: null,
+    cleanup: null,
+    renderToken,
+  };
   const userEvents = ["wheel", "touchstart", "pointerdown"];
   const scrollKeys = new Set([
     "ArrowUp",
@@ -167,36 +176,44 @@ def _render_latest_question_scroll(
     if (scrollKeys.has(event.key)) cleanup();
   };
   const cleanup = () => {
-    if (alignmentTimer) window.clearInterval(alignmentTimer);
-    if (observer) observer.disconnect();
+    if (controller.alignmentTimer) {
+      parentWindow.clearInterval(controller.alignmentTimer);
+    }
+    if (controller.observer) controller.observer.disconnect();
     userEvents.forEach((eventName) => {
       parentDocument.removeEventListener(eventName, stopForUser, true);
     });
     parentDocument.removeEventListener("keydown", stopForScrollKey, true);
+    parentWindow.removeEventListener("beforeunload", cleanup);
+    if (parentWindow[controllerKey] === controller) {
+      delete parentWindow[controllerKey];
+    }
   };
+  controller.cleanup = cleanup;
 
   const scrollContainer = parentDocument.querySelector(
     '[data-testid="stAppScrollToBottomContainer"]'
   );
   if (scrollContainer) {
-    observer = new MutationObserver(() => {
+    controller.observer = new parentWindow.MutationObserver(() => {
       alignQuestion();
     });
-    observer.observe(scrollContainer, {childList: true, subtree: true});
+    controller.observer.observe(scrollContainer, {childList: true, subtree: true});
   }
 
   userEvents.forEach((eventName) => {
     parentDocument.addEventListener(eventName, stopForUser, true);
   });
   parentDocument.addEventListener("keydown", stopForScrollKey, true);
+  parentWindow[controllerKey] = controller;
   alignQuestion();
-  alignmentTimer = window.setInterval(() => {
+  controller.alignmentTimer = parentWindow.setInterval(() => {
     alignQuestion();
     if (Date.now() - startedAt >= 30000) {
       cleanup();
     }
   }, 100);
-  window.addEventListener("beforeunload", cleanup, {once: true});
+  parentWindow.addEventListener("beforeunload", cleanup, {once: true});
 })();
 </script>
 """.replace("__TARGET_ID__", json.dumps(anchor_id)).replace(

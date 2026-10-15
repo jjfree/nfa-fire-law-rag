@@ -204,7 +204,10 @@ def test_latest_question_scroll_retries_with_a_conversation_specific_anchor():
         'const renderToken = "completed-conversation-7-message-4-question";'
         in html_body
     )
-    assert "window.parent.document" in html_body
+    assert "const parentDocument = parentWindow.document" in html_body
+    assert 'const controllerKey = "__nfaQuestionScrollController"' in html_body
+    assert "parentWindow.setInterval" in html_body
+    assert "parentWindow[controllerKey] = controller" in html_body
     assert "MutationObserver" in html_body
     assert "setInterval" in html_body
     assert "30000" in html_body
