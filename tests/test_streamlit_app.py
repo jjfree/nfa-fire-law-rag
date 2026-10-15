@@ -175,13 +175,21 @@ def test_latest_user_message_index_supports_loading_or_switching_conversations()
 def test_latest_question_scroll_retries_with_a_conversation_specific_anchor():
     from app import streamlit_app
 
-    class FakeStreamlit:
+    class FakeComponentV1:
         html_body = ""
-        unsafe_allow_javascript = False
+        height = None
+        scrolling = True
 
-        def html(self, body: str, *, unsafe_allow_javascript: bool) -> None:
+        def html(self, body: str, *, height: int, scrolling: bool) -> None:
             self.html_body = body
-            self.unsafe_allow_javascript = unsafe_allow_javascript
+            self.height = height
+            self.scrolling = scrolling
+
+    class FakeComponents:
+        v1 = FakeComponentV1()
+
+    class FakeStreamlit:
+        components = FakeComponents()
 
     fake_st = FakeStreamlit()
     streamlit_app._render_latest_question_scroll(
@@ -189,11 +197,15 @@ def test_latest_question_scroll_retries_with_a_conversation_specific_anchor():
         "conversation-7-message-4-question",
     )
 
-    assert 'const targetId = "conversation-7-message-4-question";' in fake_st.html_body
-    assert "alignQuestion();" in fake_st.html_body
-    assert "setInterval" in fake_st.html_body
-    assert "3000" in fake_st.html_body
-    assert fake_st.unsafe_allow_javascript is True
+    html_body = fake_st.components.v1.html_body
+    assert 'const targetId = "conversation-7-message-4-question";' in html_body
+    assert "window.parent.document" in html_body
+    assert "MutationObserver" in html_body
+    assert "setInterval" in html_body
+    assert "30000" in html_body
+    assert '"wheel"' in html_body
+    assert fake_st.components.v1.height == 1
+    assert fake_st.components.v1.scrolling is False
 
 
 def test_build_evidence_cards_opens_target_with_fragment_without_query_reload():

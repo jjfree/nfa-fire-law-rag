@@ -132,30 +132,62 @@ def _render_latest_question_scroll(st: Any, anchor_id: str | None) -> None:
     scroll_script = """
 <script>
 (() => {
+  const parentDocument = window.parent.document;
   const targetId = __TARGET_ID__;
   const startedAt = Date.now();
+  let alignmentTimer;
+  let observer;
+  const userEvents = ["wheel", "touchstart", "pointerdown", "keydown"];
+
   const alignQuestion = () => {
-    const target = document.getElementById(targetId);
+    const target = parentDocument.getElementById(targetId);
     if (!target) return;
+    const targetTop = target.getBoundingClientRect().top;
+    if (targetTop >= 60 && targetTop <= 100) return;
     target.scrollIntoView({block: "start", inline: "nearest", behavior: "auto"});
   };
 
+  const stopForUser = () => cleanup();
+  const cleanup = () => {
+    if (alignmentTimer) window.clearInterval(alignmentTimer);
+    if (observer) observer.disconnect();
+    userEvents.forEach((eventName) => {
+      parentDocument.removeEventListener(eventName, stopForUser, true);
+    });
+  };
+
+  const scrollContainer = parentDocument.querySelector(
+    '[data-testid="stAppScrollToBottomContainer"]'
+  );
+  if (scrollContainer) {
+    observer = new MutationObserver(() => {
+      alignQuestion();
+    });
+    observer.observe(scrollContainer, {childList: true, subtree: true});
+  }
+
+  userEvents.forEach((eventName) => {
+    parentDocument.addEventListener(eventName, stopForUser, true);
+  });
   alignQuestion();
-  const alignmentTimer = window.setInterval(() => {
+  alignmentTimer = window.setInterval(() => {
     alignQuestion();
-    if (Date.now() - startedAt >= 3000) {
-      window.clearInterval(alignmentTimer);
+    if (Date.now() - startedAt >= 30000) {
+      cleanup();
     }
   }, 100);
+  window.addEventListener("beforeunload", cleanup, {once: true});
 })();
 </script>
 """.replace("__TARGET_ID__", json.dumps(anchor_id))
-    # `unsafe_allow_javascript` is available in the supported Streamlit runtime
-    # used by the launcher. Keep a small fallback for older optional UI installs.
+
+    # Streamlit does not reliably execute scripts injected by st.html during the
+    # first page mount. A one-pixel component iframe executes the trusted,
+    # static script and can align the parent page after Streamlit's own auto-scroll.
     try:
-        st.html(scroll_script, unsafe_allow_javascript=True)
+        st.components.v1.html(scroll_script, height=1, scrolling=False)
     except (AttributeError, TypeError):
-        st.markdown(scroll_script, unsafe_allow_html=True)
+        st.html(scroll_script, unsafe_allow_javascript=True)
 
 
 _EVIDENCE_CSS = """
