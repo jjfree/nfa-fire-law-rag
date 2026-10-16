@@ -49,6 +49,7 @@ _SOURCE_DATE_RE = re.compile(
 _EXPLICIT_YEAR_RE = re.compile(r"(?:民國|中華民國)?\s*\d{2,4}\s*年")
 _QUOTED_TITLE_RE = re.compile(r"[「『]([^」』]{4,80})[」』]")
 _SAFE_TOPIC_RE = re.compile(r"^[\u3400-\u9fffA-Za-z0-9（）()、\s]+$")
+_MULTIPLE_SITES_RE = re.compile(r"(?:多個|不同|數個|兩個|二個|多處|兩處|二處|2處|２處)場所|跨場所")
 
 
 def official_source_date(content: str) -> tuple[str | None, str | None]:
@@ -117,6 +118,11 @@ def _followup_query(
         return f"{topic} {authority} 修正 最新{site}".strip()
     if requests_latest_law(query):
         return f"site:law.moj.gov.tw/LawClass/LawAll.aspx {query} 現行 修正日期"
+    # A generic question often returns only Article 13, which states appointment
+    # qualifications but does not decide whether one person may cover two sites.
+    # Search the authority's explanatory material for the exact disputed act.
+    if "防火管理人" in query and _MULTIPLE_SITES_RE.search(query):
+        return "防火管理人 不同場所 共同遴用 一位 site:nfa.gov.tw"
     return None
 
 
@@ -248,6 +254,6 @@ class OllamaWebSearchClient:
                 )
             )
         relevant = filter_relevant_web_results(query, enriched)
-        if followup:
+        if followup and (requests_official_announcement(query) or requests_latest_law(query)):
             relevant.sort(key=lambda result: result.source_date or "", reverse=True)
         return relevant

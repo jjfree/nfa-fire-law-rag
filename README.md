@@ -241,8 +241,11 @@ Streamlit 側邊欄也可在每次查詢時選擇 `gemma4:e2b`（速度優先）
 無命中時會先嘗試取得 web 補充資料。
 
 當本機 RAG 沒有結果或最高 hybrid 分數低於 `WEB_SEARCH_MIN_HYBRID_SCORE`（預設 `0.35`）時，
-系統可使用 Ollama hosted web search 作為補充，再由本機 Gemma 彙整回答。搜尋結果
-只接受 `.env` 中 `WEB_SEARCH_ALLOWED_DOMAINS` 指定的 HTTPS 官方網域，並排除未包含
+系統可使用 Ollama hosted web search 作為補充，再由本機 Gemma 彙整回答。
+即使本機分數高，若初次回答明確指出證據不足，也會先自動補查，再重新整理引用答案。
+例如詢問防火管理人可否被多個場所遴選時，補查會追加一次消防署官方資料的定向搜尋，
+尋找直接討論「不同場所共同遴用」的內容；測驗題須辨識正誤標記，舊文章不能單獨證明現行規範。
+搜尋結果只接受 `.env` 中 `WEB_SEARCH_ALLOWED_DOMAINS` 指定的 HTTPS 官方網域，並排除未包含
 問題明確查詢對象的結果；回答 API 會在
 `web_results` 回傳標題、來源連結、擷取時間與內容摘要。啟用此功能前，請在本機
 `.env` 設定 `OLLAMA_API_KEY`；此 key 同時用於 `gemma4:31b-cloud` 與 web fallback。

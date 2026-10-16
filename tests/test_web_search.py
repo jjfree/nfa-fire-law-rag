@@ -205,6 +205,43 @@ def test_latest_law_search_prefers_current_full_text(monkeypatch):
     assert results[0].source_date == "2024-11-29"
 
 
+def test_multiple_site_appointment_searches_official_explanation(monkeypatch):
+    client = OllamaWebSearchClient()
+    queries = []
+    official_url = "https://www.nfa.gov.tw/ebook/10408/files/basic-html/page21.html"
+
+    def fake_post(url, payload):
+        if "query" in payload:
+            queries.append(payload["query"])
+            if len(queries) == 1:
+                return {"results": [{
+                    "title": "消防法第13條",
+                    "url": "https://law.moj.gov.tw/LawClass/LawSingle.aspx?flno=13",
+                    "content": "應由管理權人遴用防火管理人",
+                }]}
+            return {"results": [
+                {"title": "消防月刊測驗題與答案", "url": official_url, "content": "摘要"},
+                {"title": "民間轉載", "url": "https://example.com/repost", "content": "摘要"},
+            ]}
+        if payload["url"] == official_url:
+            return {"content": (
+                "題目：依法應實施防火管理之不同場所，管理權人可共同遴用一位防火管理人。"
+                " 答案：Ｘ"
+            )}
+        return {"content": "消防法第13條應由管理權人遴用防火管理人"}
+
+    monkeypatch.setattr(client, "_post_json", fake_post)
+    results = client.search("防火管理人是否可以被多個場所遴選?")
+
+    assert queries == [
+        "防火管理人是否可以被多個場所遴選?",
+        "防火管理人 不同場所 共同遴用 一位 site:nfa.gov.tw",
+    ]
+    assert results[0].url == official_url
+    assert "答案：Ｘ" in results[0].content
+    assert len(results) == 2
+
+
 def test_historical_year_query_skips_latest_version_followup(monkeypatch):
     client = OllamaWebSearchClient()
     queries = []

@@ -134,6 +134,50 @@ def test_auto_keeps_high_scoring_ordinary_law_question_local(monkeypatch):
     assert response["web_search_status"] == "not_needed"
 
 
+def test_auto_rechecks_insufficient_answer_before_returning(monkeypatch):
+    hit = SimpleNamespace(retrieval_mode="hybrid", hybrid_score=0.9)
+    official = WebSearchResult(
+        "消防月刊測驗題與答案",
+        "https://www.nfa.gov.tw/ebook/10408/files/basic-html/page21.html",
+        "不同場所共同遴用一位防火管理人：Ｘ",
+        "2026-10-16T00:00:00+00:00",
+    )
+    calls = []
+    monkeypatch.setattr(
+        "app.answer.get_settings",
+        lambda: SimpleNamespace(web_search_enabled=True, web_search_provider="ollama",
+                                web_search_min_hybrid_score=0.35),
+    )
+    monkeypatch.setattr(
+        "app.answer.generate_answer",
+        lambda query, hits, model=None: AnswerResult(
+            "目前檢索到的法規資料不足以確認防火管理人是否可以被多個場所遴選。[1]",
+            "ok", (1,),
+        ),
+    )
+    monkeypatch.setattr(
+        "app.answer.OllamaWebSearchClient.search",
+        lambda self, query: calls.append(("search", query)) or [official],
+    )
+    monkeypatch.setattr(
+        "app.answer._with_web_evidence",
+        lambda query, hits, web_results, model: (
+            calls.append(("generate", web_results[0].url))
+            or AnswerResult("官方資料顯示不可共同遴用。[2]", "ok", (2,))
+        ),
+    )
+
+    response = answer_question("防火管理人是否可以被多個場所遴選?", [hit])
+
+    assert calls == [
+        ("search", "防火管理人是否可以被多個場所遴選?"),
+        ("generate", official.url),
+    ]
+    assert response["answer"] == "官方資料顯示不可共同遴用。[2]"
+    assert response["answer_citations"] == [2]
+    assert response["web_search_status"] == "used"
+
+
 @pytest.mark.parametrize(
     ("search_result", "expected_status"),
     [([], "no_results"), (WebSearchUnavailable("missing key"), "unavailable")],

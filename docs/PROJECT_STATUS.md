@@ -217,6 +217,8 @@ no live crawl was run.
 | 2026-10-16 precision search probe | Bounded live searches found a 2025-09-16 Ministry amendment announcement ahead of the 2024-03-07 original announcement; a latest-law query found the current full-text Fire Services Act page on `law.moj.gov.tw` with a 2024-11-29 amendment date. |
 | 2026-10-16 repository tests after precision search | `131 passed, 29 warnings` with `--basetemp data/pytest-precision-full`; includes focused re-query, official-domain deduplication, source-date parsing/order, historical-year behavior, fallback on secondary search failure, answer provenance, and UI date display. Ruff passed on changed Python files. |
 | 2026-10-16 named-article regression | `134 passed, 29 warnings` with `--basetemp data/pytest_article_20261016c`; confirms `請說明消防法第四十二條` resolves to the stored current `消防法` / `第42條`, including Chinese/Arabic subarticle labels and UI mode display. No crawl or local database rewrite was needed. |
+| 2026-10-16 insufficient-answer web follow-up | Saved conversation 24 already reported `web_search_status=used` with three generic official sources, but its final answer could not resolve multiple-site appointment. The web client now adds one bounded NFA precision query for that intent; an offline regression checks official-source priority and a separate answer test checks search before final synthesis. A live Ollama probe was attempted but this execution environment could not resolve the service host (DNS `getaddrinfo failed`). |
+| 2026-10-16 follow-up validation | `136 passed, 29 warnings` with `--basetemp data/pytest_auto_web_20261016`; Ruff passed on changed Python files. System manual PDF (10 pages), frontend guide PDF (8 pages), and the DOCX opened read-only in Word and exported for inspection (10 pages); all pages were visually checked. The standard DOCX renderer could not run because LibreOffice is absent, so Word export was used for the editable edition's layout check. |
 | Ruff (changed Python files) | Passed |
 | Ruff (whole repository) | Three pre-existing findings remain: one `B008` in `app/cli.py` and import ordering in two crawler modules |
 
@@ -225,6 +227,19 @@ from SQLAlchemy-related defaults, the deprecated `sqlite3.version` read used for
 check, and a pytest cache permission warning. They did not fail tests.
 
 ## Files changed in this phase
+
+On 2026-10-16, review of saved conversation 24 showed that automatic search had
+already run for the multiple-site fire-manager question but returned only general
+legal and institutional pages. `app/web_search.py` now issues one additional bounded
+NFA search for the precise different-site appointment issue and prioritizes those
+results before the general results. `app/answer.py` reminds the answer model to read
+quiz answer keys and source dates rather than treating a quiz question as a rule.
+Offline tests cover the focused search, official allowlist, and regeneration after
+an insufficient local answer. README, system manual/PDF, frontend guide/Word/PDF,
+and this status report were aligned. Existing screenshots remain accurate because
+they depict generic answer and evidence states, not this specific question.
+`AGENTS.md`, `.env.example`, `pyproject.toml`, and the migration plan were unaffected:
+maintenance rules, settings, dependencies, entrypoints, and milestones did not change.
 
 On 2026-10-16, a named-article question using Chinese numerals failed to match
 the stored Arabic-number article label. Exact-title and single-article queries now
