@@ -94,6 +94,29 @@ def test_build_response_handles_empty_retrieval():
     assert "gemma4:31b-cloud" in ANSWER_MODEL_OPTIONS
 
 
+def test_exact_article_evidence_has_no_hybrid_score_label():
+    hit = FakeHit(
+        law_title="消防法",
+        article_label="第42條",
+        heading="第六章 罰則",
+        content="第42條內容",
+        source_url="https://law.nfa.gov.tw/test",
+        version_no=1,
+        vector_score=1.0,
+        lexical_score=1.0,
+        hybrid_score=1.0,
+    )
+    hit.retrieval_mode = "exact_article"
+    response = build_response(
+        "請說明消防法第四十二條", [hit], {"mode": "exact_article"}
+    )
+    cards = build_evidence_cards(response["results"], [])
+
+    assert "精確找到 1 筆" in response["summary"]
+    assert "法規與條號精確查找" in cards
+    assert "hybrid=" not in cards
+
+
 def test_build_response_reports_complete_structural_coverage():
     hit = FakeHit(
         law_title="消防法",

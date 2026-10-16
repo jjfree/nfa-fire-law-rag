@@ -22,6 +22,7 @@ from app.query_analysis import (
 )
 from app.search import (
     SearchHit,
+    _article_hint,
     _matched_law_titles,
     exhaustive_section_search,
     hybrid_search,
@@ -383,12 +384,20 @@ def _retrieve_ranked_hits(
         and settings.reranker_provider.lower() == "ollama"
         and is_reranker_query(query)
     )
-    if not should_rerank:
-        if (
-            extract_focus_terms(query)
-            or len(split_query_facets(query)) > 1
-            or is_broad_regulatory_query(query)
+    needs_facet_coverage = bool(
+        extract_focus_terms(query)
+        or len(split_query_facets(query)) > 1
+        or is_broad_regulatory_query(query)
+    )
+    if _article_hint(query) is not None and (should_rerank or needs_facet_coverage):
+        direct_hits = hybrid_search(query, top_k=top_k, law_title=law_title)
+        if not direct_hits or all(
+            getattr(hit, "retrieval_mode", "hybrid") == "exact_article"
+            for hit in direct_hits
         ):
+            return direct_hits
+    if not should_rerank:
+        if needs_facet_coverage:
             return _retrieve_with_facet_coverage(query, top_k, law_title)
         return hybrid_search(query, top_k=top_k, law_title=law_title)
 
@@ -421,9 +430,12 @@ def retrieve_answer_evidence(
             )
 
     hits = _retrieve_ranked_hits(query, top_k, law_title)
+    exact_match = bool(hits) and all(
+        getattr(hit, "retrieval_mode", "hybrid") == "exact_article" for hit in hits
+    )
     return RetrievalResult(
         hits=hits,
-        mode="hybrid",
+        mode="exact_article" if exact_match else "hybrid",
         requested_top_k=top_k,
         total_matches=len(hits),
         complete=None,

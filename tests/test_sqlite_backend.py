@@ -19,6 +19,8 @@ from app.db import embedding_to_storage, engine, init_db, rebuild_fts, session_s
 from app.embedding import HashEmbedder
 from app.models import Law, LawChunk, LawVersion
 from app.search import (
+    _article_hint,
+    _canonical_article_label,
     _defined_terms,
     _matched_law_titles,
     _normalize_query,
@@ -241,6 +243,33 @@ def test_action_query_still_prefers_obligation_over_definition():
 def test_sqlite_exact_article_matches_current_data():
     hits = exact_article("消防法", "第13條")
     assert [hit.article_label for hit in hits] == ["第13條"]
+    assert exact_article("消防主管機關作業規定", "一、")[0].article_label == "一、"
+
+
+def test_chinese_article_numbers_normalize_to_stored_labels():
+    assert _article_hint("請說明消防法第四十二條") == "第42條"
+    assert _canonical_article_label("第 四十二 條 之 一") == "第42-1條"
+    assert _canonical_article_label("第42-1條") == "第42-1條"
+    assert _article_hint("比較消防法第四十二條與第四十三條") is None
+
+
+def test_named_article_query_uses_exact_current_chunk():
+    query = "請說明消防法第四十二條"
+    hits = hybrid_search(query, top_k=8)
+    assert [(hit.law_title, hit.article_label) for hit in hits] == [("消防法", "第42條")]
+    assert hits[0].retrieval_mode == "exact_article"
+    assert exact_article("消防法", "第四十二條")[0].article_label == "第42條"
+    assert exact_article("消防法", "第四十二條之一")[0].article_label == "第42-1條"
+
+    from app.rerank import retrieve_answer_evidence
+
+    evidence = retrieve_answer_evidence(query, top_k=8)
+    assert evidence.mode == "exact_article"
+    assert [hit.article_label for hit in evidence.hits] == ["第42條"]
+    focused = retrieve_answer_evidence("消防法第四十二條是否包含危險物品？", top_k=8)
+    assert focused.mode == "exact_article"
+    assert [hit.article_label for hit in focused.hits] == ["第42條"]
+    assert hybrid_search("請說明消防法第99條", top_k=8) == []
 
 
 def test_exhaustive_penalty_query_returns_complete_structural_section():

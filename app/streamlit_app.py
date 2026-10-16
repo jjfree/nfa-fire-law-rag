@@ -317,6 +317,8 @@ def build_evidence_cards(
         title = f"[{index}] {law_title}｜{article}{heading}｜版本 {row['version_no']}"
         if row.get("retrieval_mode") == "structural_section":
             metadata = "結構式章節檢索 · 依條文順序"
+        elif row.get("retrieval_mode") == "exact_article":
+            metadata = "法規與條號精確查找"
         else:
             metadata = "hybrid={:.4f} · vector={:.4f} · lexical={:.4f}".format(
                 row["hybrid_score"], row["vector_score"], row["lexical_score"]
@@ -382,6 +384,8 @@ def build_response(
             f"{retrieval.get('scope_heading')}」章節結構完整取回 "
             f"{len(rows)}／{total} 筆現行實質條文，並依條文順序顯示。"
         )
+    elif retrieval and retrieval.get("mode") == "exact_article":
+        summary = f"本機 RAG 依法規名稱與條號精確找到 {len(rows)} 筆現行條文。"
     else:
         summary = (
             f"本機 RAG 找到 {len(rows)} 筆現行版本相關條文。以下內容是檢索依據，"

@@ -13,6 +13,13 @@ from app.query_analysis import expand_regulatory_query, extract_focus_terms
 ARTICLE_HINT_RE = re.compile(
     r"(第\s*[一二三四五六七八九十百千萬〇○零兩\d\-之]+\s*條(?:\s*之\s*[一二三四五六七八九十百千\d]+)?)"
 )
+_ARTICLE_LABEL_RE = re.compile(
+    r"^第(?P<number>[一二三四五六七八九十百千萬〇○零兩\d]+)"
+    r"(?:(?:-|之)(?P<sub>[一二三四五六七八九十百千萬〇○零兩\d]+))?"
+    r"條(?:之(?P<after>[一二三四五六七八九十百千萬〇○零兩\d]+))?$"
+)
+_CHINESE_DIGITS = dict(zip("零〇○一二三四五六七八九兩", (0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 2)))
+_CHINESE_UNITS = {"十": 10, "百": 100, "千": 1000, "萬": 10000}
 _TEXT_TOKEN_RE = re.compile(r"[\u3400-\u9fffA-Za-z0-9]+")
 _CJK_RUN_RE = re.compile(r"[\u3400-\u9fff]+")
 _EXPLICIT_DEFINITION_QUERY_MARKERS = ("定義", "何謂", "所稱", "係指", "是指")
@@ -94,9 +101,48 @@ class SectionSearchResult:
     total_matches: int
 
 
+def _article_number(value: str) -> int | None:
+    if value.isdecimal():
+        return int(value)
+    total = section = digit = 0
+    for char in value:
+        if char in _CHINESE_DIGITS:
+            digit = _CHINESE_DIGITS[char]
+        elif char == "萬":
+            total += (section + digit) * 10000
+            section = digit = 0
+        elif char in _CHINESE_UNITS:
+            section += (digit or 1) * _CHINESE_UNITS[char]
+            digit = 0
+        else:
+            return None
+    return total + section + digit
+
+
+def _canonical_article_label(value: str) -> str | None:
+    compact = re.sub(r"\s+", "", value)
+    match = _ARTICLE_LABEL_RE.fullmatch(compact)
+    if not match or (match.group("sub") and match.group("after")):
+        return None
+    number = _article_number(match.group("number"))
+    sub = match.group("sub") or match.group("after")
+    sub_number = _article_number(sub) if sub else None
+    if number is None or (sub and sub_number is None):
+        return None
+    return f"第{number}{f'-{sub_number}' if sub else ''}條"
+
+
+def _article_hints(query: str) -> tuple[str, ...]:
+    return tuple(
+        hint
+        for match in ARTICLE_HINT_RE.finditer(query)
+        if (hint := _canonical_article_label(match.group(1))) is not None
+    )
+
+
 def _article_hint(query: str) -> str | None:
-    match = ARTICLE_HINT_RE.search(query)
-    return re.sub(r"\s+", "", match.group(1)) if match else None
+    hints = _article_hints(query)
+    return hints[0] if len(hints) == 1 else None
 
 
 def _cjk_fts_query(query: str) -> str:
@@ -218,7 +264,7 @@ def _text_lexical_score(
         score = max(score, 1.0)
     score = max(score, _definition_score(query, content))
     hint = _article_hint(query)
-    if hint and re.sub(r"\s+", "", article or "") == hint:
+    if hint and _canonical_article_label(article or "") == hint:
         score = max(score, 1.0)
     return min(score, 1.0)
 
@@ -392,6 +438,10 @@ def hybrid_search(
     settings = get_settings()
     top_k = top_k or settings.default_top_k
     query = _normalize_query(query) or query
+    article_scope = _article_query_scope(query, law_title)
+    if article_scope is not None:
+        scoped_title, article = article_scope
+        return exact_article(scoped_title, article, exact_title=True)[:top_k]
     if settings.storage_backend.lower() == "sqlite":
         return _sqlite_hybrid_search(query, top_k, law_title)
     query_vector = get_embedder().embed([query])[0]
@@ -471,20 +521,41 @@ def hybrid_search(
         ]
 
 
-def exact_article(law_title: str, article_label: str) -> list[SearchHit]:
-    normalized = "".join(article_label.split())
+def _article_query_scope(query: str, law_title: str | None) -> tuple[str, str] | None:
+    """Use exact lookup only for one article and one unambiguous law title."""
+    article = _article_hint(query)
+    if article is None:
+        return None
     with session_scope() as db:
-        rows = db.execute(
+        titles = list(db.scalars(select(Law.title).distinct()))
+    named = _matched_law_titles(query, titles)
+    if len(named) == 1 and (not law_title or law_title.lower() in named[0].lower()):
+        return named[0], article
+    if not named and law_title in titles:
+        return law_title, article
+    return None
+
+
+def exact_article(
+    law_title: str, article_label: str, *, exact_title: bool = False
+) -> list[SearchHit]:
+    canonical = _canonical_article_label(article_label)
+    normalized = canonical or "".join(article_label.split())
+    if not normalized:
+        return []
+    with session_scope() as db:
+        stmt = (
             select(LawChunk, LawVersion, Law)
             .join(LawVersion, LawChunk.version_id == LawVersion.id)
             .join(Law, LawVersion.law_id == Law.id)
-            .where(
-                LawVersion.is_current.is_(True),
-                Law.title.ilike(f"%{law_title}%"),
-                func.replace(LawChunk.article_label, " ", "") == normalized,
-            )
+            .where(LawVersion.is_current.is_(True))
             .order_by(Law.title, LawChunk.seq)
-        ).all()
+        )
+        if exact_title:
+            stmt = stmt.where(Law.title == law_title)
+        else:
+            stmt = stmt.where(Law.title.ilike(f"%{law_title}%"))
+        rows = db.execute(stmt).all()
         return [
             SearchHit(
                 chunk_id=chunk.id,
@@ -498,6 +569,12 @@ def exact_article(law_title: str, article_label: str) -> list[SearchHit]:
                 vector_score=1.0,
                 lexical_score=1.0,
                 hybrid_score=1.0,
+                retrieval_mode="exact_article",
             )
             for chunk, version, law in rows
+            if (
+                _canonical_article_label(chunk.article_label or "") == normalized
+                if canonical
+                else "".join((chunk.article_label or "").split()) == normalized
+            )
         ]

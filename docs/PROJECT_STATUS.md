@@ -85,6 +85,10 @@ future capability, **可沿用** means keep as the current extension point, and
 - SQLite retrieval fuses FTS5 candidates, exact law-title routing, structured legal
   definition signals, text overlap, and NumPy cosine similarity. Hash embeddings
   use a lower provider-specific vector weight; exact article lookup is also present.
+- A query naming one law and one article now normalizes Chinese/Arabic numerals and
+  routes to exact current-version lookup. A missing article does not return a
+  similarly scored provision from another law; answer metadata and UI cards identify
+  `exact_article` results without presenting lookup scores as hybrid similarity.
 - Composite inclusion questions are split into focused retrieval facets. Exact named
   objects receive a conservative lexical signal, and the answer-facing merge reserves
   evidence coverage across distinct facets plus the best matching parent statute in the
@@ -212,6 +216,7 @@ no live crawl was run.
 | 2026-10-15 repository tests after automatic announcement search | `124 passed, 29 warnings` with `--basetemp data/pytest-auto-announcement-full`; focused tests cover source-intent classification, auto search with high-scoring local hits, ordinary local-only queries, and accurate UI caption. |
 | 2026-10-16 precision search probe | Bounded live searches found a 2025-09-16 Ministry amendment announcement ahead of the 2024-03-07 original announcement; a latest-law query found the current full-text Fire Services Act page on `law.moj.gov.tw` with a 2024-11-29 amendment date. |
 | 2026-10-16 repository tests after precision search | `131 passed, 29 warnings` with `--basetemp data/pytest-precision-full`; includes focused re-query, official-domain deduplication, source-date parsing/order, historical-year behavior, fallback on secondary search failure, answer provenance, and UI date display. Ruff passed on changed Python files. |
+| 2026-10-16 named-article regression | `134 passed, 29 warnings` with `--basetemp data/pytest_article_20261016c`; confirms `請說明消防法第四十二條` resolves to the stored current `消防法` / `第42條`, including Chinese/Arabic subarticle labels and UI mode display. No crawl or local database rewrite was needed. |
 | Ruff (changed Python files) | Passed |
 | Ruff (whole repository) | Three pre-existing findings remain: one `B008` in `app/cli.py` and import ordering in two crawler modules |
 
@@ -220,6 +225,18 @@ from SQLAlchemy-related defaults, the deprecated `sqlite3.version` read used for
 check, and a pytest cache permission warning. They did not fail tests.
 
 ## Files changed in this phase
+
+On 2026-10-16, a named-article question using Chinese numerals failed to match
+the stored Arabic-number article label. Exact-title and single-article queries now
+normalize the article number and fetch only matching current-version chunks.
+The query `請說明消防法第四十二條` returns `消防法` / `第42條` from the ignored local
+database. Answer and UI metadata mark the result as `exact_article`; the evidence
+card does not present fixed lookup scores as hybrid relevance. Offline regression
+tests, README, system manual and PDF, frontend guide and its Word/PDF editions,
+and the migration plan were aligned. Existing screenshots depict general hybrid
+results and remain accurate; none shows a named-article query. `AGENTS.md`,
+`.env.example`, and `pyproject.toml` were unaffected because maintenance rules,
+settings, dependencies, and entrypoints did not change.
 
 The 2026-10-15 change adds a leading `/web` directive and `web_mode=force` to answer
 entrypoints. The answer layer attempts official web search even when local evidence

@@ -258,6 +258,9 @@ database; this preference is separate from law versions and the FTS5 index.
 
 - Predictable top-k hybrid retrieval with article hints, optional law-title filter,
   current-version filtering, score components, and provenance in every hit.
+- Completed follow-up: one unambiguous law title and article number now route to
+  exact current-version lookup. Chinese and Arabic article numerals normalize to
+  the same label; missing articles return no substitute hits.
 - Implemented follow-up: broad topic queries use a bounded candidate pool, reserve
   directly governing regulations and parent acts, and diversify evidence by law before
   filling by original relevance. Administrative item hierarchy is retained on future
