@@ -91,6 +91,8 @@ python -m app.cli crawl
 
 PowerShell 請用單引號包住含 `&` 的完整 URL。此工具只發出一次 GET，不追蹤轉址、不重試、不探索其他頁面或附件；須核對頁面上的文號和函釋正文才會寫入。相同內容回報 `unchanged`，內容變更保留舊版。若官方頁面無法存取，可用自行從官方頁面保存的 HTML 加上 `--html-file <檔案>` 離線匯入；`--preview` 僅解析不寫入。HTTP 403／429 或無法核對正文時停止，不要重試或繞過站台限制。對應 skill 為 `.codex/skills/nfa-single-interpretation/SKILL.md`。
 
+若已有該函釋的官方列印 PDF，可在同一指令加 `--pdf-file '<PDF 路徑>'` 完全離線匯入；先加 `--preview` 核對文號、日期及頁數。工具保存未修改的 PDF 副本於本機忽略目錄，依頁索引文字；證據卡可開啟本機 PDF 對應頁，並保留消防署原始 URL。掃描型、無法核對文號／日期或超過設定上限的 PDF 會拒絕匯入。本機 PDF 連結只在啟動此專案的 Streamlit 時可用。
+
 parser 升版後先執行不寫入資料的檢查：
 
 ```powershell

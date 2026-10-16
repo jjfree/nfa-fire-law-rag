@@ -6,6 +6,7 @@ __pycache__/
 *.py[cod]
 *.sqlite3
 data/
+app/static/local-pdfs/
 .coverage
 htmlcov/
 .DS_Store

@@ -102,6 +102,14 @@ def exhaustive_section_heading(query: str) -> str | None:
 
 def expand_regulatory_query(query: str) -> str:
     """Add bounded legal synonyms for lexical retrieval without rewriting intent."""
-    if not is_penalty_topic_query(query):
-        return query
-    return f"{query} {_PENALTY_QUERY_EXPANSION}"
+    additions: list[str] = []
+    if is_penalty_topic_query(query):
+        additions.append(_PENALTY_QUERY_EXPANSION)
+    compact = re.sub(r"\s+", "", query)
+    if (
+        "防火管理人" in compact
+        and any(place in compact for place in ("多個場所", "不同場所", "兩個場所", "2個場所"))
+        and any(action in compact for action in ("遴選", "遴用", "兼任", "擔任"))
+    ):
+        additions.append("不同場所 兼任")
+    return " ".join((query, *additions))

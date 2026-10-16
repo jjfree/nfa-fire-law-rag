@@ -8,6 +8,7 @@ from app.config import get_settings
 from app.db import embedding_from_storage, session_scope
 from app.embedding import get_embedder
 from app.models import Law, LawChunk, LawVersion
+from app.nfa_interpretation_pdf import pdf_public_url
 from app.query_analysis import expand_regulatory_query, extract_focus_terms
 
 ARTICLE_HINT_RE = re.compile(
@@ -92,6 +93,7 @@ class SearchHit:
     hybrid_score: float
     retrieval_mode: str = "hybrid"
     source_type: str = "law"
+    local_pdf_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -322,6 +324,7 @@ def exhaustive_section_search(
                 hybrid_score=0.0,
                 retrieval_mode="structural_section",
                 source_type="nfa_interpretation" if law.category == "消防署函釋" else "law",
+                local_pdf_url=pdf_public_url(version.metadata_json, chunk.article_label),
             )
             for chunk, version, law in rows
             if not _is_deleted_only(chunk.article_label, chunk.content)
@@ -371,6 +374,7 @@ def _sqlite_hybrid_search(query: str, top_k: int, law_title: str | None) -> list
                 Law.id.label("law_id"),
                 Law.title,
                 LawVersion.version_no,
+                LawVersion.metadata_json,
                 LawChunk.article_label,
                 LawChunk.heading,
                 LawChunk.content,
@@ -425,6 +429,7 @@ def _sqlite_hybrid_search(query: str, top_k: int, law_title: str | None) -> list
                         content=row.content,
                         source_url=row.source_url,
                         source_type="nfa_interpretation" if row.category == "消防署函釋" else "law",
+                        local_pdf_url=pdf_public_url(row.metadata_json, row.article_label),
                         vector_score=vector_score,
                         lexical_score=lexical_score,
                         hybrid_score=hybrid_score,
@@ -488,6 +493,7 @@ def hybrid_search(
             Law.id.label("law_id"),
             Law.title,
             LawVersion.version_no,
+            LawVersion.metadata_json,
             LawChunk.article_label,
             LawChunk.heading,
             LawChunk.content,
@@ -519,6 +525,7 @@ def hybrid_search(
                 content=r.content,
                 source_url=r.source_url,
                 source_type="nfa_interpretation" if r.category == "消防署函釋" else "law",
+                local_pdf_url=pdf_public_url(r.metadata_json, r.article_label),
                 vector_score=float(r.vector_score or 0.0),
                 lexical_score=float(r.lexical_score or 0.0),
                 hybrid_score=float(r.hybrid_score or 0.0),
@@ -577,6 +584,7 @@ def exact_article(
                 hybrid_score=1.0,
                 retrieval_mode="exact_article",
                 source_type="nfa_interpretation" if law.category == "消防署函釋" else "law",
+                local_pdf_url=pdf_public_url(version.metadata_json, chunk.article_label),
             )
             for chunk, version, law in rows
             if (

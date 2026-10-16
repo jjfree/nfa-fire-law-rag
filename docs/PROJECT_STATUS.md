@@ -6,28 +6,29 @@ Branch: `main` at `origin/main`; the tracked baseline was clean before this docu
 
 ## Executive summary
 
-The single-page NFA FINT interpretation path is implemented in
-`app/nfa_interpretation.py`, `scripts/add_nfa_interpretation.py`, and the repository
-skill `.codex/skills/nfa-single-interpretation/SKILL.md`. It accepts only an
-explicit official URL, fetches at most one page without redirects or retries,
-checks its document number/body, and versions current chunks in the existing
-SQLite/FTS5/vector index. Offline fixtures verify validation, no-write preview,
-unchanged/version transitions, current-only FTS, and answer source labeling.
-The cited live example has not been indexed: one bounded import attempt returned
-`ConnectError` before an HTTP response, and a read-only check found zero
-`nfa-fint` records in the local database. No fabricated page content was stored.
-The remaining risk is unverified parsing of the live FINT template and source
-access policy. An official saved HTML file can be supplied for offline import.
-No new configuration key, dependency, or database table was introduced. The
-system manual and its generated PDF, README, migration plan, and frontend
-guide with synchronized Word/PDF were aligned. Existing UI screenshots remain
-accurate because the example interpretation was not imported and no Streamlit
-controls or layout changed.
-Current validation: `140 passed, 33 warnings` with a workspace-local pytest
-temporary directory; Ruff passed on the changed Python files, the skill validator
-passed, and the system manual PDF (10 pages), frontend PDF (8 pages), and Word
-export of the editable guide (10 pages) were visually checked. The Word renderer
-required a read-only Microsoft Word export because LibreOffice is unavailable.
+The single-page NFA FINT interpretation path now accepts a matching user-supplied
+PDF as well as an official URL or saved HTML. The PDF path makes no NFA request,
+checks its issuer/document number/date against the official URL's EID, and stores
+page text in the existing versioned SQLite/FTS5/vector index. Content-addressed
+copies remain in ignored local data/static directories. Search/API/MCP evidence
+retains the official URL and carries a page-specific local PDF link; Streamlit
+shows both links in the PDF evidence card. The original user PDF is untouched.
+The supplied `內授消字第1000824302號.pdf` was imported into the local database as
+law 183, version 1, one page/chunk. The user's original question now returns this
+interpretation first for top-k 5 and 8, with `local_pdf_url` pointing to page 1.
+A loopback-only Streamlit smoke test returned HTTP 200, `application/pdf`, and
+the identical SHA-256 bytes. A prior bounded official-site attempt returned
+`ConnectError`; the live FINT HTML parser and source access policy remain
+unverified. Local PDF provenance is based on the supplied saved official print
+file and visible fields, not a cryptographic source-site attestation.
+No new `.env` key, dependency, or database table was introduced. The Streamlit
+static-serving option was enabled in `.streamlit/config.toml`. README,
+system manual/PDF, migration plan, skill, and frontend guide/Word/PDF were aligned.
+Existing screenshots show ordinary law evidence and remain accurate; the PDF link
+is conditional on PDF-backed interpretation evidence. Current validation: 143
+offline tests passed, Ruff and skill validation passed. The generated manual and
+frontend formats were rendered and visually checked. Word inspection used a
+read-only Microsoft Word export because LibreOffice is unavailable.
 
 The repository is a working Phase 2 proof of concept, not an empty scaffold. The
 SQLite-first path already covers discovery, bounded HTTP fetching, source URL identity,

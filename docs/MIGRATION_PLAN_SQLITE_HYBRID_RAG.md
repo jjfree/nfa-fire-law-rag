@@ -119,6 +119,10 @@ at most one request without redirects or retries, and inserts only verified body
 content into the existing versioned SQLite/FTS5/vector tables. It does not expand
 the category crawler or claim interpretation-corpus completeness. A broader
 interpretation discovery workflow remains a separate, source-policy-dependent step.
+The matching user-supplied official PDF can now enter through the same one-URL
+workflow without any site request. Its page text is indexed, while content-addressed
+local copies support page-level evidence links. This adds no schema or dependency;
+the broader source discovery and interpretation update policy remain unfinished.
 
 **Input**
 

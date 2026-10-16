@@ -15,6 +15,7 @@ from typing import Any
 
 ANSWER_MODEL_OPTIONS = ("gemma4:e2b", "gemma4:e4b", "gemma4:31b-cloud")
 _CITATION_RE = re.compile(r"\[(\d+)\]")
+_LOCAL_PDF_URL_RE = re.compile(r"^/app/static/local-pdfs/[0-9a-f]{64}\.pdf#page=([1-9]\d*)$")
 _OUTPUT_LIMIT_REASONS = {"length", "max_tokens", "token_limit"}
 _QUESTION_ANCHOR_CSS = """
 <style>
@@ -283,10 +284,18 @@ def _evidence_card(
     content: str,
     source_url: str,
     anchor_prefix: str,
+    local_pdf_url: str | None = None,
 ) -> str:
     anchor_id = f"{anchor_prefix}-{index}"
     safe_anchor_id = escape(anchor_id, quote=True)
     toggle_id = f"{anchor_id}-toggle"
+    pdf_match = _LOCAL_PDF_URL_RE.fullmatch(local_pdf_url or "")
+    local_pdf_link = (
+        f'<a href="{escape(local_pdf_url, quote=True)}" target="_blank" '
+        f'rel="noopener noreferrer">開啟本機 PDF（第{pdf_match.group(1)}頁）</a> · '
+        if pdf_match else ""
+    )
+    source_label = "消防署原始網址" if pdf_match else "開啟原始來源"
     return (
         f'<div id="{safe_anchor_id}" class="rag-evidence-card">'
         f'<input class="rag-evidence-toggle" type="checkbox" '
@@ -296,8 +305,9 @@ def _evidence_card(
         '<div class="rag-evidence-content">'
         f'<div class="rag-evidence-meta">{escape(metadata)}</div>'
         f'<pre class="rag-evidence-text">{escape(content)}</pre>'
+        f'{local_pdf_link}'
         f'<a href="{escape(source_url, quote=True)}" target="_blank" '
-        f'rel="noopener noreferrer">開啟原始來源</a>'
+        f'rel="noopener noreferrer">{source_label}</a>'
         "</div></div>"
     )
 
@@ -331,6 +341,7 @@ def build_evidence_cards(
                 content=row["content"],
                 source_url=row["source_url"],
                 anchor_prefix=anchor_prefix,
+                local_pdf_url=row.get("local_pdf_url"),
             )
         )
     for index, source in enumerate(web_results, start=local_count + 1):
@@ -367,6 +378,8 @@ def build_response(
                 "heading": hit.heading or "",
                 "content": hit.content,
                 "source_url": hit.source_url,
+                "source_type": getattr(hit, "source_type", "law"),
+                "local_pdf_url": getattr(hit, "local_pdf_url", None),
                 "version_no": hit.version_no,
                 "vector_score": float(hit.vector_score),
                 "lexical_score": float(hit.lexical_score),

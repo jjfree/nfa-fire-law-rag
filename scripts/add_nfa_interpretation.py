@@ -13,12 +13,19 @@ from app.nfa_interpretation import InterpretationImportError, import_interpretat
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("url", help="One direct https://law.nfa.gov.tw/GNFA/FINT/FINTQRY04.aspx?EID=... URL")
-    parser.add_argument("--html-file", type=Path, help="Previously saved official page; makes no network request")
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("--html-file", type=Path, help="Previously saved official HTML; makes no network request")
+    source.add_argument("--pdf-file", type=Path, help="Official interpretation PDF; makes no network request")
     parser.add_argument("--preview", action="store_true", help="Parse and report only; do not write the index")
     args = parser.parse_args()
     try:
-        html = args.html_file.read_text(encoding="utf-8") if args.html_file else None
-        result = import_interpretation(args.url, html=html, apply=not args.preview)
+        if args.pdf_file:
+            from app.nfa_interpretation_pdf import import_interpretation_pdf
+
+            result = import_interpretation_pdf(args.pdf_file, args.url, apply=not args.preview)
+        else:
+            html = args.html_file.read_text(encoding="utf-8") if args.html_file else None
+            result = import_interpretation(args.url, html=html, apply=not args.preview)
     except (InterpretationImportError, OSError, UnicodeError) as exc:
         print(json.dumps({"status": "error", "error": str(exc)}, ensure_ascii=False), file=sys.stderr)
         return 1

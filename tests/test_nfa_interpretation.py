@@ -1,3 +1,4 @@
+import json
 from contextlib import contextmanager
 
 import httpx
@@ -147,3 +148,73 @@ def test_single_import_versions_current_and_indexes_only_requested_page(isolated
     hits = hybrid_search("防火管理人不同場所", top_k=2)
     assert hits and hits[0].source_type == "nfa_interpretation"
     assert "來源類型：消防署函釋" in build_evidence_context(hits)
+
+
+def test_offline_pdf_import_links_indexed_page_and_preserves_official_url(
+    isolated_db, monkeypatch, tmp_path
+):
+    import app.nfa_interpretation_pdf as pdf_module
+    from app.config import get_settings
+    from app.models import Law, LawVersion
+    from app.search import hybrid_search
+    from app.streamlit_app import build_evidence_cards, build_response
+
+    source = tmp_path / "official.pdf"
+    source.write_bytes(b"%PDF-test-content")
+    monkeypatch.setattr(pdf_module, "get_settings", lambda: get_settings().model_copy(update={"max_attachment_bytes": 25_000_000}))
+    page_text = "測試用：防火管理人與不同場所的函釋索引文字，這不是正式函釋內容。" * 4
+    monkeypatch.setattr(
+        pdf_module,
+        "_extract_pages",
+        lambda _content, _number, _eid: ([page_text], {"發文日期": "100/07/18", "發文機關": "內政部消防署"}),
+    )
+    storage = tmp_path / "stored"
+    public = tmp_path / "public"
+    preview = pdf_module.import_interpretation_pdf(
+        source, URL, apply=False, storage_dir=storage, public_dir=public
+    )
+    assert preview["status"] == "preview"
+    assert not storage.exists() and not public.exists()
+
+    inserted = pdf_module.import_interpretation_pdf(
+        source, URL, storage_dir=storage, public_dir=public
+    )
+    assert inserted["status"] == "inserted"
+    assert inserted["local_pdf_url"].endswith("#page=1")
+    next(public.glob("*.pdf")).unlink()
+    assert pdf_module.import_interpretation_pdf(
+        source, URL, storage_dir=storage, public_dir=public
+    )["status"] == "unchanged"
+    assert len(list(storage.glob("*.pdf"))) == 1
+    assert len(list(public.glob("*.pdf"))) == 1
+
+    with isolated_db() as db:
+        law = db.scalar(select(Law))
+        version = db.scalar(select(LawVersion))
+        assert law.source_url == URL
+        assert version.is_current
+        assert json.loads(version.metadata_json)["source_format"] == "user_supplied_pdf"
+    hits = hybrid_search("防火管理人不同場所", top_k=2)
+    assert hits and hits[0].local_pdf_url == inserted["local_pdf_url"]
+    response = build_response("防火管理人不同場所", hits)
+    card = build_evidence_cards(response["results"], [])
+    assert "開啟本機 PDF（第1頁）" in card
+    assert "消防署原始網址" in card
+    assert inserted["local_pdf_url"] in card
+
+
+def test_pdf_public_url_rejects_untrusted_metadata():
+    from app.nfa_interpretation_pdf import pdf_public_url
+
+    assert pdf_public_url('[]', "第1頁") is None
+    assert pdf_public_url('{"local_pdf_name":"' + "a" * 64 + '.pdf","pdf_page_count":"bad"}', "第1頁") is None
+    assert pdf_public_url('{"local_pdf_name":"../secret.pdf","pdf_page_count":1}', "第1頁") is None
+    assert pdf_public_url('{"local_pdf_name":"' + "a" * 64 + '.pdf","pdf_page_count":1}', "第2頁") is None
+
+
+def test_multiple_premises_query_adds_interpretation_vocabulary():
+    from app.query_analysis import expand_regulatory_query
+
+    expanded = expand_regulatory_query("防火管理人是否可以被多個場所遴選?")
+    assert "不同場所 兼任" in expanded
+    assert expand_regulatory_query("多個場所的消防設備檢修") == "多個場所的消防設備檢修"
