@@ -4,10 +4,12 @@ import pytest
 from app.config import Settings
 from app.web_search import (
     OllamaWebSearchClient,
+    WebSearchError,
     WebSearchResult,
     WebSearchUnavailable,
     filter_relevant_web_results,
     is_allowed_web_url,
+    official_source_date,
 )
 
 
@@ -81,13 +83,32 @@ def test_default_allowlist_keeps_ministry_announcement_from_forced_search(monkey
     def fake_post(url, *, json, headers, timeout):
         request = httpx.Request("POST", url)
         if url.endswith("web_search"):
-            assert json["query"] == "一定規模以上之建築物的中央主管機關公告?"
+            if json["query"] != "一定規模以上之建築物的中央主管機關公告?":
+                assert json["query"] == (
+                    "消防法第十三條第一項一定規模以上之建築物 內政部 修正 最新 site:moi.gov.tw"
+                )
+                return httpx.Response(
+                    200,
+                    json={"results": [
+                        {
+                            "title": "修正「消防法第十三條第一項一定規模以上之建築物」",
+                            "url": "https://www.moi.gov.tw/News_Content.aspx?n=145&s=331840",
+                            "content": "修正公告",
+                        },
+                        {
+                            "title": "訂定「消防法第十三條第一項一定規模以上之建築物」",
+                            "url": "https://www.moi.gov.tw/News_Content.aspx?n=145&s=314010",
+                            "content": "原公告",
+                        },
+                    ]},
+                    request=request,
+                )
             return httpx.Response(
                 200,
                 json={
                     "results": [
                         {
-                            "title": "內政部公告",
+                            "title": "訂定「消防法第十三條第一項一定規模以上之建築物」",
                             "url": "https://www.moi.gov.tw/News_Content.aspx?n=145&s=314010",
                             "content": "消防法第十三條公告",
                         },
@@ -100,18 +121,109 @@ def test_default_allowlist_keeps_ministry_announcement_from_forced_search(monkey
                 },
                 request=request,
             )
+        if json["url"].endswith("s=331840"):
+            return httpx.Response(
+                200,
+                json={"title": "修正公告", "content": (
+                    "法規命令發布(法規公發布)日：114-09-16\n"
+                    "修正一定規模以上之建築物，自115年1月1日生效。"
+                )},
+                request=request,
+            )
         return httpx.Response(
             200,
-            json={"title": "內政部公告", "content": "一定規模以上之建築物應訂定消防防護計畫。"},
+            json={"title": "訂定公告", "content": (
+                "法規命令發布(法規公發布)日：113-03-07\n"
+                "一定規模以上之建築物應訂定消防防護計畫。"
+            )},
             request=request,
         )
 
     monkeypatch.setattr("app.web_search.httpx.post", fake_post)
     results = OllamaWebSearchClient().search("一定規模以上之建築物的中央主管機關公告?")
 
-    assert len(results) == 1
-    assert results[0].url.startswith("https://www.moi.gov.tw/")
+    assert len(results) == 2
+    assert results[0].url.endswith("s=331840")
+    assert results[0].source_date == "2025-09-16"
+    assert results[0].source_date_label == "法規命令發布(法規公發布)日"
+    assert results[1].source_date == "2024-03-07"
     assert "一定規模以上之建築物" in results[0].content
+
+
+def test_official_source_date_distinguishes_amendment_from_effective_date():
+    assert official_source_date(
+        "修正日期： | 民國 113 年 11 月 29 日\n自115年1月1日施行"
+    ) == ("2024-11-29", "修正日期")
+    assert official_source_date("自115年1月1日生效") == (None, None)
+
+
+def test_precision_search_failure_keeps_initial_official_result(monkeypatch):
+    client = OllamaWebSearchClient()
+    calls = []
+
+    def fake_post(url, payload):
+        calls.append(payload)
+        if "query" in payload and len(calls) == 1:
+            return {"results": [{
+                "title": "訂定「消防法第十三條第一項一定規模以上之建築物」",
+                "url": "https://www.moi.gov.tw/News_Content.aspx?n=145&s=314010",
+                "content": "原公告",
+            }]}
+        if "query" in payload:
+            raise WebSearchError("temporary failure")
+        return {"content": "法規命令發布日：113-03-07 原公告"}
+
+    monkeypatch.setattr(client, "_post_json", fake_post)
+    results = client.search("一定規模以上之建築物的中央主管機關公告?")
+
+    assert len(results) == 1
+    assert results[0].source_date == "2024-03-07"
+    assert len([payload for payload in calls if "query" in payload]) == 2
+
+
+def test_latest_law_search_prefers_current_full_text(monkeypatch):
+    client = OllamaWebSearchClient()
+    queries = []
+
+    def fake_post(url, payload):
+        if "query" in payload:
+            queries.append(payload["query"])
+            if len(queries) == 1:
+                return {"results": []}
+            return {"results": [{
+                "title": "消防法-全國法規資料庫",
+                "url": "https://law.moj.gov.tw/LawClass/LawAll.aspx?PCode=D0120001",
+                "content": "消防法",
+            }]}
+        return {"content": "修正日期：民國 113 年 11 月 29 日\n消防法現行條文"}
+
+    monkeypatch.setattr(client, "_post_json", fake_post)
+    results = client.search("消防法最新修正條文")
+
+    assert len(queries) == 2
+    assert queries[1].startswith("site:law.moj.gov.tw/LawClass/LawAll.aspx")
+    assert results[0].source_date == "2024-11-29"
+
+
+def test_historical_year_query_skips_latest_version_followup(monkeypatch):
+    client = OllamaWebSearchClient()
+    queries = []
+
+    def fake_post(url, payload):
+        if "query" in payload:
+            queries.append(payload["query"])
+            return {"results": [{
+                "title": "113年主管機關公告",
+                "url": "https://www.moi.gov.tw/News_Content.aspx?n=145&s=314010",
+                "content": "原公告",
+            }]}
+        return {"content": "公告日期：113-03-07"}
+
+    monkeypatch.setattr(client, "_post_json", fake_post)
+    results = client.search("請找113年中央主管機關公告")
+
+    assert len(queries) == 1
+    assert results[0].source_date == "2024-03-07"
 
 
 def test_ollama_web_search_requires_api_key(monkeypatch):

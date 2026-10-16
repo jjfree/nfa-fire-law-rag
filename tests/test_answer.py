@@ -8,6 +8,7 @@ from app.answer import (
     answer_question,
     build_answer_prompt,
     build_evidence_context,
+    build_web_evidence_context,
     generate_answer,
     rag_needs_web_search,
     validate_citations,
@@ -55,6 +56,18 @@ def test_evidence_context_compacts_repeated_same_law_source():
 
     assert context.count("https://law.nfa.gov.tw/test") == 1
     assert "來源 URL：同 [1] 法規版本與來源" in context
+
+
+def test_web_evidence_keeps_official_source_date_separate_from_fetch_time():
+    result = WebSearchResult(
+        "修正公告", "https://www.moi.gov.tw/News_Content.aspx?n=145&s=331840",
+        "修正內容", "2026-10-16T00:00:00+00:00", "2025-09-16", "法規命令發布日",
+    )
+
+    context = build_web_evidence_context([result], 2)
+
+    assert "來源日期（法規命令發布日）：2025-09-16" in context
+    assert "擷取時間：2026-10-16" in context
 
 
 def test_complete_structural_evidence_does_not_trigger_web_fallback():

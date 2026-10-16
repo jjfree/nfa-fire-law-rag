@@ -21,6 +21,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     ListFlowable,
     ListItem,
+    PageBreak,
     Paragraph,
     Preformatted,
     SimpleDocTemplate,
@@ -229,6 +230,8 @@ def markdown_to_flowables(markdown: str, styles: dict[str, ParagraphStyle], avai
         if heading:
             flush_paragraph()
             level = len(heading.group(1))
+            if heading.group(2) == "9. 文件維護與變更紀錄":
+                story.append(PageBreak())
             style_name = "title" if level == 1 else "h2" if level == 2 else "h3"
             story.append(Paragraph(inline_markup(heading.group(2)), styles[style_name]))
             index += 1

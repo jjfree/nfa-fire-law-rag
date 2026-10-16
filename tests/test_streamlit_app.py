@@ -235,6 +235,8 @@ def test_build_evidence_cards_opens_target_with_fragment_without_query_reload():
     web = {
         "title": "官方補充",
         "retrieved_at": "2026-09-14T00:00:00+00:00",
+        "source_date": "2025-09-16",
+        "source_date_label": "法規命令發布日",
         "content_preview": "官方內容",
         "url": "https://law.nfa.gov.tw/official",
     }
@@ -250,6 +252,7 @@ def test_build_evidence_cards_opens_target_with_fragment_without_query_reload():
     assert 'class="rag-evidence-card"' in cards
     assert "?evidence=" not in cards
     assert "本法所稱主管機關。" in cards
+    assert "法規命令發布日：2025-09-16" in cards
 
 
 def test_build_evidence_cards_preserves_number_order_across_repeated_laws():

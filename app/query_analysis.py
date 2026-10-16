@@ -79,6 +79,14 @@ def requests_official_announcement(query: str) -> bool:
     )
 
 
+def requests_latest_law(query: str) -> bool:
+    """Recognize law-version requests that need a current official source check."""
+    normalized = re.sub(r"\s+", "", query)
+    return any(word in normalized for word in ("最新", "現行", "最近", "修正", "修訂", "版本")) and any(
+        word in normalized for word in ("法", "條例", "辦法", "標準", "規則")
+    )
+
+
 def is_penalty_topic_query(query: str) -> bool:
     """Recognize statutory penalty vocabulary, including common user aliases."""
     normalized = re.sub(r"\s+", "", query)

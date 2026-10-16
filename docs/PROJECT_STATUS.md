@@ -210,6 +210,8 @@ no live crawl was run.
 | 2026-10-15 allowlist regression tests | `120 passed, 29 warnings` with `--basetemp data/pytest-web-allowlist-full`; focused test verifies the exact central-authority query retains a Ministry of the Interior result and rejects a private repost. |
 | 2026-10-15 automatic announcement search | A saved non-`/web` query for the central-authority announcement returned `web_search_status=not_needed` despite top local score 0.645; the answer gate now recognizes explicit authority-announcement requests before relying on that score. |
 | 2026-10-15 repository tests after automatic announcement search | `124 passed, 29 warnings` with `--basetemp data/pytest-auto-announcement-full`; focused tests cover source-intent classification, auto search with high-scoring local hits, ordinary local-only queries, and accurate UI caption. |
+| 2026-10-16 precision search probe | Bounded live searches found a 2025-09-16 Ministry amendment announcement ahead of the 2024-03-07 original announcement; a latest-law query found the current full-text Fire Services Act page on `law.moj.gov.tw` with a 2024-11-29 amendment date. |
+| 2026-10-16 repository tests after precision search | `131 passed, 29 warnings` with `--basetemp data/pytest-precision-full`; includes focused re-query, official-domain deduplication, source-date parsing/order, historical-year behavior, fallback on secondary search failure, answer provenance, and UI date display. Ruff passed on changed Python files. |
 | Ruff (changed Python files) | Passed |
 | Ruff (whole repository) | Three pre-existing findings remain: one `B008` in `app/cli.py` and import ordering in two crawler modules |
 
@@ -250,6 +252,22 @@ dependencies, agent rules, and migration milestones did not change.
 A bounded live probe with the exact query and a 0.645 local score returned
 `web_search_mode=auto`, `web_search_status=used`, and two official web results;
 answer generation was stubbed during this trigger check.
+
+On 2026-10-16, the same announcement query initially favored the 113-year original
+notice because the provider's top-five result window omitted the later amendment.
+The web client now uses one bounded follow-up search based on the first official
+result's formal title, or a current full-text query for latest-law requests. It
+deduplicates allowed URLs, fetches at most the configured three pages, extracts
+only explicit official publication/amendment dates, and orders dated evidence
+newest first. A follow-up failure retains initial results; an explicit historical
+year suppresses the latest-version follow-up. The answer prompt distinguishes
+source dates from effective dates and retrieval time, and warns when latest-version
+completeness cannot be established. API/MCP/Streamlit web evidence now carries
+`source_date` and `source_date_label` when available. README, system manual,
+frontend guide, generated PDFs/Word, and project status were aligned; existing
+screenshots remain accurate because they show ordinary local evidence rather than
+Web date metadata. No configuration key, dependency, crawler, or SQLite contract
+changed.
 
 - `AGENTS.md` — new repository working contract with 16 policy categories.
 - `README.md` — corrected the documented 2-second throttle, made Windows-safe,

@@ -332,11 +332,16 @@ def build_evidence_cards(
             )
         )
     for index, source in enumerate(web_results, start=local_count + 1):
+        source_date = source.get("source_date")
+        source_date_label = source.get("source_date_label") or "來源日期"
+        date_metadata = f" · {source_date_label}：{source_date}" if source_date else ""
         cards.append(
             _evidence_card(
                 index=index,
                 title=f"[{index}] {source['title']}",
-                metadata=f"官方網頁補充資料 · 擷取時間：{source['retrieved_at']}",
+                metadata=(
+                    f"官方網頁補充資料{date_metadata} · 擷取時間：{source['retrieved_at']}"
+                ),
                 content=source.get("content_preview", ""),
                 source_url=source["url"],
                 anchor_prefix=anchor_prefix,

@@ -85,6 +85,30 @@ def test_auto_searches_central_authority_announcement_despite_high_local_score(m
     assert response["web_results"][0]["url"] == result.url
 
 
+def test_auto_checks_latest_law_even_with_high_local_score(monkeypatch):
+    searched = []
+    monkeypatch.setattr(
+        "app.answer.get_settings",
+        lambda: SimpleNamespace(web_search_enabled=True, web_search_provider="ollama"),
+    )
+    monkeypatch.setattr(
+        "app.answer.OllamaWebSearchClient.search",
+        lambda self, query: searched.append(query) or [],
+    )
+    monkeypatch.setattr(
+        "app.answer.generate_answer",
+        lambda query, hits, model=None: AnswerResult("本機條文。[1]", "ok", (1,)),
+    )
+
+    response = answer_question(
+        "消防法最新修正條文",
+        [SimpleNamespace(retrieval_mode="hybrid", hybrid_score=0.9)],
+    )
+
+    assert searched == ["消防法最新修正條文"]
+    assert response["web_search_status"] == "no_results"
+
+
 def test_auto_keeps_high_scoring_ordinary_law_question_local(monkeypatch):
     monkeypatch.setattr(
         "app.answer.get_settings",

@@ -137,6 +137,8 @@ SQLite 檢索先以 FTS5 取得候選，再以 NumPy 計算 embedding cosine sim
 
 問答若明確要求主管機關、內政部或消防署的「公告」，也會在產生回答前自動嘗試官方網頁搜尋，即使本機法規片段分數高或檢索完成。這類問題要求的是公告原文來源，法規條文的相關度無法代替公告查核；一般法條提問仍沿用既有分數門檻。自動搜尋可能因停用、缺少金鑰、連線失敗或無合格來源而只回傳本機證據。前端狀態提示描述實際搜尋結果，不將所有自動搜尋都歸因於 RAG 證據不足。
 
+要求「最新／現行／修正」法規版本時，也會在本機分數高的情況下自動查核官方來源。公告搜尋先執行原問題，再從第一輪官方結果的正式名稱與同一官方網域組成一次「修正／最新」精確查詢；最新版法規則追加一次全國法規資料庫現行全文定向查詢。兩輪結果先驗證 HTTPS 官方網域並去重，仍受 `WEB_SEARCH_MAX_RESULTS` 和 `WEB_SEARCH_MAX_FETCH_RESULTS` 上限約束；精確查詢失敗會保留首輪結果。若問題指定歷史年份，則不追加最新版查詢。擷取後只從官方頁面明示的發布、發文、公告或修正日期產生 `source_date` 與 `source_date_label`，依來源日期排序；生效日期與擷取時間不當作發布或修正日期。找不到來源日期時保留原始結果但不宣稱它是最新版；任何有限的 Web 搜尋都無法證明已涵蓋全部後續版本，仍須查核原始官方頁面及沿革。
+
 預設 `WEB_SEARCH_ALLOWED_DOMAINS` 包含 `moi.gov.tw` 及其子網域，可保留內政部中央主管機關公告。若本機 `.env` 曾覆寫允許清單，需同步加入 `moi.gov.tw`；變更設定後重新啟動問答服務。`web_search_status=no_results` 表示已嘗試搜尋，但搜尋服務回傳的來源未通過官方網域或相關性篩選，並非未觸發搜尋。
 
 問答入口支援在問題開頭輸入 `/web `，或由 API/MCP 指定 `web_mode=force`，不受本機分數或完整章節模式影響而嘗試一次官方網頁搜尋。程式在檢索前移除指令，避免 `/web` 混入檢索、Web 查詢及模型問題；一般問題使用 `web_mode=auto`。強制搜尋仍須符合 `WEB_SEARCH_ENABLED`、Ollama API key、HTTPS 官方網域白名單與相關性過濾，並不保證有可引用的結果。回應以 `web_search_mode` 與 `web_search_status` 區分使用者意圖與實際結果；無結果或服務不可用時仍保留本機證據與回答。
@@ -260,6 +262,7 @@ MCP 使用 stdio；在 MCP client 設定中以 repository 內的 Python 啟動�
 提供的 MCP 工具為 `search_fire_law`、`ask_fire_law`、`get_fire_law_article`、`list_fire_laws`、`list_law_versions`。檢索 smoke test：
 
 `/v1/ask` 與 MCP `ask_fire_law` 的 `web_mode` 可為 `auto`（預設）或 `force`；兩者也接受問題開頭的 `/web ` 指令。回應的 `query` 為移除指令後的問題，並回傳 `web_search_mode`、`web_search_status`。單獨輸入 `/web` 會拒絕為空問題；一般 `/v1/search` 與 MCP `search_fire_law` 不解析此問答指令。
+`web_results` 在來源頁面有可解析日期時，另回傳 `source_date`（西元 ISO 日期）與 `source_date_label`（頁面原始日期欄位）；`retrieved_at` 仍只表示抓取時間。
 
 ```powershell
 .venv\Scripts\python.exe -m app.cli eval --path eval/phase2_queries.json --top-k 8
@@ -317,6 +320,7 @@ MCP 使用 stdio；在 MCP client 設定中以 repository 內的 Python 啟動�
 | 2026-10-15 | 問答支援 `/web` 與 `web_mode=force`，顯示強制搜尋結果及不可用原因 |
 | 2026-10-15 | 預設 web 允許清單加入內政部 `moi.gov.tw`，修正中央主管機關公告遭排除的情況 |
 | 2026-10-15 | 明確查詢主管機關公告時自動嘗試官方 web search，不受本機檢索高分阻止 |
+| 2026-10-16 | 公告與最新版法規追加一次官方來源精確查詢，依發布／修正日期排序並標示來源日期 |
 | 2026-10-13 | 前端顯示結果數存入 SQLite，重新啟動後恢復最後設定 |
 | 2026-09-29 | 證據卡顯示時預設收合，點擊回答引用後展開目標卡片 |
 | 2026-09-24 | 修正 Windows venv 啟動器辨識；加入完整列舉罰則檢索與覆蓋 metadata |

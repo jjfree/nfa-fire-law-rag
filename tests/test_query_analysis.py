@@ -1,6 +1,7 @@
 from app.query_analysis import (
     extract_focus_terms,
     is_broad_regulatory_query,
+    requests_latest_law,
     requests_official_announcement,
     split_query_facets,
 )
@@ -30,3 +31,9 @@ def test_official_announcement_request_needs_source_beyond_law_text():
     assert requests_official_announcement("內政部的最新公告在哪裡？")
     assert not requests_official_announcement("消防法第13條的規定為何？")
     assert not requests_official_announcement("消防法對公告程序有何規定？")
+
+
+def test_latest_law_request_needs_current_official_source():
+    assert requests_latest_law("消防法最新修正條文")
+    assert requests_latest_law("現行消防安全設備檢修及申報辦法")
+    assert not requests_latest_law("消防法第13條的規定為何？")
