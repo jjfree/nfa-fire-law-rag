@@ -91,6 +91,7 @@ class SearchHit:
     lexical_score: float
     hybrid_score: float
     retrieval_mode: str = "hybrid"
+    source_type: str = "law"
 
 
 @dataclass(frozen=True)
@@ -320,6 +321,7 @@ def exhaustive_section_search(
                 lexical_score=0.0,
                 hybrid_score=0.0,
                 retrieval_mode="structural_section",
+                source_type="nfa_interpretation" if law.category == "消防署函釋" else "law",
             )
             for chunk, version, law in rows
             if not _is_deleted_only(chunk.article_label, chunk.content)
@@ -373,6 +375,7 @@ def _sqlite_hybrid_search(query: str, top_k: int, law_title: str | None) -> list
                 LawChunk.heading,
                 LawChunk.content,
                 Law.source_url,
+                Law.category,
                 LawChunk.embedding,
             )
             .join(LawVersion, LawChunk.version_id == LawVersion.id)
@@ -421,6 +424,7 @@ def _sqlite_hybrid_search(query: str, top_k: int, law_title: str | None) -> list
                         heading=row.heading,
                         content=row.content,
                         source_url=row.source_url,
+                        source_type="nfa_interpretation" if row.category == "消防署函釋" else "law",
                         vector_score=vector_score,
                         lexical_score=lexical_score,
                         hybrid_score=hybrid_score,
@@ -488,6 +492,7 @@ def hybrid_search(
             LawChunk.heading,
             LawChunk.content,
             Law.source_url,
+            Law.category,
             vector_score,
             lexical_score,
             hybrid_score,
@@ -513,6 +518,7 @@ def hybrid_search(
                 heading=r.heading,
                 content=r.content,
                 source_url=r.source_url,
+                source_type="nfa_interpretation" if r.category == "消防署函釋" else "law",
                 vector_score=float(r.vector_score or 0.0),
                 lexical_score=float(r.lexical_score or 0.0),
                 hybrid_score=float(r.hybrid_score or 0.0),
@@ -570,6 +576,7 @@ def exact_article(
                 lexical_score=1.0,
                 hybrid_score=1.0,
                 retrieval_mode="exact_article",
+                source_type="nfa_interpretation" if law.category == "消防署函釋" else "law",
             )
             for chunk, version, law in rows
             if (

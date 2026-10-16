@@ -83,6 +83,14 @@ python -m app.cli crawl
 
 此命令依 `LSID`、content hash 與 `parser_revision` 判斷結果；來源內容與 parser 版本均未變才回報 `unchanged`。來源內容變更時新增 current version 並保留歷史版本；只有 parser 規則升版時回報 `reprocess_required`，不把衍生資料調整誤記成法規新版本。專案內的 `.codex/skills/nfa-incremental-crawl/SKILL.md` 也已將「請增量爬取A001/A002/A003」對應到此流程。
 
+若已取得**單一消防署函釋**的官方 `FINTQRY04.aspx?EID=...` URL，可只將該頁加入本機 SQLite／FTS5／向量索引：
+
+```powershell
+.venv\Scripts\python.exe scripts\add_nfa_interpretation.py '<完整函釋 URL>'
+```
+
+PowerShell 請用單引號包住含 `&` 的完整 URL。此工具只發出一次 GET，不追蹤轉址、不重試、不探索其他頁面或附件；須核對頁面上的文號和函釋正文才會寫入。相同內容回報 `unchanged`，內容變更保留舊版。若官方頁面無法存取，可用自行從官方頁面保存的 HTML 加上 `--html-file <檔案>` 離線匯入；`--preview` 僅解析不寫入。HTTP 403／429 或無法核對正文時停止，不要重試或繞過站台限制。對應 skill 為 `.codex/skills/nfa-single-interpretation/SKILL.md`。
+
 parser 升版後先執行不寫入資料的檢查：
 
 ```powershell

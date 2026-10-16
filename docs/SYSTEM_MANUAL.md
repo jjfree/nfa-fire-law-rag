@@ -207,6 +207,18 @@ API 要長駐執行時，請保留該視窗；停止可按 `Ctrl+C`。`/v1/admin
 
 `probe` 不需資料庫與 embedding，會回報 `LSID`、retrieved URL、chunk 數、首末條號、metadata、content hash 與附件 URL，適合先確認站台格式。`crawl` 是增量操作，未變更法規不會建立新版本。
 
+### 6.4a 單篇消防署函釋匯入
+
+對使用者已指定的單篇官方 `GNFA/FINT/FINTQRY04.aspx?EID=...` 函釋，執行：
+
+```powershell
+.venv\Scripts\python.exe scripts\add_nfa_interpretation.py '<完整函釋 URL>'
+```
+
+PowerShell 須以單引號保護 URL 內的 `&`。工具僅接受 `https://law.nfa.gov.tw` 的指定 detail 路徑與一個有效 `EID`，每次最多發出一次 GET；不追蹤轉址、不重試、不探索分類頁、不下載附件。回應限 HTML 與 1 MB，需在頁面確認指定文號及足夠的「主旨／說明／要旨／內容」正文才寫入。HTTP 403／429、轉址、連線失敗或解析不足會停止且不改索引；不能保證站台不會記錄或限制正常請求，也不應以換身分、代理或自動瀏覽器繞過限制。若已由人工從官方頁面保存 HTML，可加上 `--html-file <路徑>` 做完全離線匯入；`--preview` 只解析與回報，不寫入資料庫。
+
+函釋以解碼後的 `EID` 作穩定 `source_key`，在既有 `laws` 表中標記分類 `消防署函釋`；`law_versions` 保存原文、雜湊、`EID`、文號、發文資訊與來源／取得 URL，`law_chunks` 保存段落與 float32 向量，FTS5 只索引現行版本。沒有新增資料表或設定鍵。檢索與回答證據標為「消防署函釋」，保留原始來源 URL 與版本；函釋是行政解釋資料，仍須核對其適用時點與後續變更，不將其視為法條本身。此工具只匯入明確指定的 URL，無法證明函釋庫完整。skill 操作說明位於 `.codex/skills/nfa-single-interpretation/SKILL.md`。
+
 ### 6.5 Parser 升版後重建現行 chunks
 
 parser/chunk 規則升版後，先執行 dry-run；此步驟不連網也不寫入資料：
@@ -314,6 +326,7 @@ MCP 使用 stdio；在 MCP client 設定中以 repository 內的 Python 啟動�
 | Streamlit port 被占用 | 重新執行新版啟動器；它會辨識本 repository 的 Windows venv 父子程序鏈並安全重啟。若仍顯示不相關 PID，表示無法安全確認擁有者，應人工核對後關閉或修改 port，不要任意終止 process |
 | 切換 embedding provider | 使用新的 `DATABASE_URL` 或受控 re-embedding 流程，先備份 SQLite，避免混用向量 |
 | crawl 顯示 `reprocess_required` | 先執行 `reprocess-current` dry-run，備份 SQLite 後再以 `--apply` 重建現行衍生資料 |
+| 單篇函釋匯入顯示 `ConnectError` 或無法核對正文 | 停止重試；確認合法存取路徑，或使用從官方頁面人工保存的 HTML 配合 `--html-file` 離線匯入 |
 
 ## 9. 文件維護與變更紀錄
 
@@ -321,6 +334,7 @@ MCP 使用 stdio；在 MCP client 設定中以 repository 內的 Python 啟動�
 
 | 日期 | 內容 |
 |---|---|
+| 2026-10-16 | 加入單篇消防署函釋 URL 匯入工具與 skill，限定一頁並建立版本、FTS5 與向量索引 |
 | 2026-10-16 | 證據不足時補查後重整答案，跨場所遴用問題追加消防署官方定向搜尋 |
 | 2026-10-16 | 單一法規條號查詢先正規化中文／阿拉伯數字，再精確取回現行條文並標示模式 |
 | 2026-10-16 | 公告與最新版法規追加一次官方來源精確查詢，依發布／修正日期排序並標示來源日期 |

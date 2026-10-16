@@ -71,15 +71,19 @@ def build_evidence_context(
             if first_source_index == index
             else f"同 [{first_source_index}] 法規版本與來源"
         )
+        is_interpretation = getattr(hit, "source_type", "law") == "nfa_interpretation"
         sections.append(
             "\n".join(
                 [
-                    f"[{index}] 法規名稱：{hit.law_title}",
-                    f"條號：{article}",
+                    *(
+                        [f"[{index}] 來源類型：消防署函釋", f"來源名稱：{hit.law_title}", f"段落：{article}"]
+                        if is_interpretation
+                        else [f"[{index}] 法規名稱：{hit.law_title}", f"條號：{article}"]
+                    ),
                     f"標題：{heading}",
                     f"版本：{hit.version_no}",
                     f"來源 URL：{source_label}",
-                    f"條文內容：\n{content}",
+                    f"{'函釋內容' if is_interpretation else '條文內容'}：\n{content}",
                 ]
             )
         )
@@ -128,6 +132,7 @@ def build_answer_prompt(query: str, evidence: str) -> str:
 9. 回答必須完整收尾；內容以必要重點為限，避免為了篇幅重複同一規定。
 10. 問題涉及最新版時，按官方來源的發布或修正日期比較同名資料，區分生效日期與擷取時間；若無法確認版本完整性，明說尚無法保證為最新版。
 11. 若證據是測驗題、問答或舊文章，須辨識其正誤標記與發表時間；不能把題幹當成正確規定，也不能僅憑舊資料推定現行規範。
+12. 標示為「消防署函釋」的本機證據屬行政解釋資料；依其發文日期說明適用時點，不得僅憑歷史函釋推定現行法規未變。
 
 <question>
 {query}

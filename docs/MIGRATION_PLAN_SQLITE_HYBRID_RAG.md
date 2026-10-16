@@ -113,6 +113,13 @@ database; this preference is separate from law versions and the FTS5 index.
 
 ## Phase 3 — Source discovery and bounded acquisition
 
+The single-URL NFA FINT interpretation importer is a focused source path alongside
+category discovery. It validates one official `FINTQRY04.aspx` URL and `EID`, makes
+at most one request without redirects or retries, and inserts only verified body
+content into the existing versioned SQLite/FTS5/vector tables. It does not expand
+the category crawler or claim interpretation-corpus completeness. A broader
+interpretation discovery workflow remains a separate, source-policy-dependent step.
+
 **Input**
 
 - Source category/detail URL handling in `app/crawler/`, allowed-host config, and

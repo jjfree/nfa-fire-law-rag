@@ -1,10 +1,33 @@
 # Project Status — nfa-fire-law-rag
 
-Date: 2026-10-15
+Date: 2026-10-16
 Repository: `C:\Users\james.chang\source\nfa-fire-law-rag`
 Branch: `main` at `origin/main`; the tracked baseline was clean before this documentation change.
 
 ## Executive summary
+
+The single-page NFA FINT interpretation path is implemented in
+`app/nfa_interpretation.py`, `scripts/add_nfa_interpretation.py`, and the repository
+skill `.codex/skills/nfa-single-interpretation/SKILL.md`. It accepts only an
+explicit official URL, fetches at most one page without redirects or retries,
+checks its document number/body, and versions current chunks in the existing
+SQLite/FTS5/vector index. Offline fixtures verify validation, no-write preview,
+unchanged/version transitions, current-only FTS, and answer source labeling.
+The cited live example has not been indexed: one bounded import attempt returned
+`ConnectError` before an HTTP response, and a read-only check found zero
+`nfa-fint` records in the local database. No fabricated page content was stored.
+The remaining risk is unverified parsing of the live FINT template and source
+access policy. An official saved HTML file can be supplied for offline import.
+No new configuration key, dependency, or database table was introduced. The
+system manual and its generated PDF, README, migration plan, and frontend
+guide with synchronized Word/PDF were aligned. Existing UI screenshots remain
+accurate because the example interpretation was not imported and no Streamlit
+controls or layout changed.
+Current validation: `140 passed, 33 warnings` with a workspace-local pytest
+temporary directory; Ruff passed on the changed Python files, the skill validator
+passed, and the system manual PDF (10 pages), frontend PDF (8 pages), and Word
+export of the editable guide (10 pages) were visually checked. The Word renderer
+required a read-only Microsoft Word export because LibreOffice is unavailable.
 
 The repository is a working Phase 2 proof of concept, not an empty scaffold. The
 SQLite-first path already covers discovery, bounded HTTP fetching, source URL identity,
@@ -35,7 +58,7 @@ not required for the Windows SQLite target.
 | Database | `app/db.py`, `app/models.py`, `scripts/init.sql` | SQLite default implemented; PostgreSQL optional |
 | API/MCP | `app/api.py`, `app/mcp_server.py` | Implemented PoC search and cited-answer interfaces with retrieval-mode and coverage metadata |
 | Browser UI | `app/streamlit_app.py`, `app/conversations.py`, `app/ui_preferences.py`, `.streamlit/config.toml`, `pyproject.toml` `ui` extra | Local Streamlit Q&A/evidence interface with SQLite-persisted multi-conversation history and display-result count, title editing, deletion, latest-question viewport positioning, and exhaustive-query coverage display |
-| Tests | Offline test modules plus fixtures | 119 tests passing |
+| Tests | Offline test modules plus fixtures | 140 tests passing as of 2026-10-16 |
 | Evaluation | `eval/phase2_queries.json`, `app/evaluation.py`, CLI `eval` | Seed evaluation implemented; corpus-dependent |
 | Config | `app/config.py`, `.env.example`; local `.env` ignored | Implemented; secrets kept local |
 | Docs | `README.md`, `AGENTS.md`, five `docs/` files, versioned screenshots, system-manual PDF, and frontend Word/PDF guides | README, full system manual, frontend user guide, developer notes, editable/print deliverables, and operational documentation are present |
